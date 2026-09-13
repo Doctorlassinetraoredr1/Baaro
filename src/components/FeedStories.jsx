@@ -1,206 +1,260 @@
-/**
- * Statuts / Stories en haut du Fil — style WhatsApp / Instagram.
- * À placer en premier enfant de FeedTab.
- */
-import { useState } from "react";
-import { X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { X, Image as ImageIcon, Video, Type, BarChart3, Smile, Send } from "lucide-react";
 import { supabase } from "../supabaseClient.js";
 import { StoriesBar } from "./StoriesBar.jsx";
 import { StoryViewer } from "./StoryViewer.jsx";
 import { COLORS } from "../theme.js";
 import { useToast } from "./ToastContext.jsx";
 
+const MAX_FILE_SIZE = 100 * 1024 * 1024;
+const MAX_TEXT = 500;
+const STORY_BACKGROUNDS = [
+  "linear-gradient(135deg,#18233d,#0b1220)",
+  "linear-gradient(135deg,#5b3b13,#121826)",
+  "linear-gradient(135deg,#3a174d,#101827)",
+  "linear-gradient(135deg,#0c4a4e,#101827)",
+];
+
 export function FeedStories({ userId, onRewardPoints }) {
   const { showToast, showPointsReward } = useToast();
   const [storyGroup, setStoryGroup] = useState(null);
   const [storyRefreshKey, setStoryRefreshKey] = useState(0);
-  const [showCreateStory, setShowCreateStory] = useState(false);
-  const [storyFile, setStoryFile] = useState(null);
-  const [storyText, setStoryText] = useState("");
-  const [uploadingStory, setUploadingStory] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState("text");
+  const [text, setText] = useState("");
+  const [file, setFile] = useState(null);
+  const [preview, setPreview] = useState("");
+  const [background, setBackground] = useState(STORY_BACKGROUNDS[0]);
+  const [pollQuestion, setPollQuestion] = useState("");
+  const [pollOptions, setPollOptions] = useState(["", ""]);
+  const [publishing, setPublishing] = useState(false);
 
-  const handleFile = (file) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/") && !file.type.startsWith("video/")) {
+  const reset = () => {
+    if (preview) URL.revokeObjectURL(preview);
+    setOpen(false);
+    setMode("text");
+    setText("");
+    setFile(null);
+    setPreview("");
+    setBackground(STORY_BACKGROUNDS[0]);
+    setPollQuestion("");
+    setPollOptions(["", ""]);
+  };
+
+  useEffect(() => () => {
+    if (preview) URL.revokeObjectURL(preview);
+  }, [preview]);
+
+  const canPublish = useMemo(() => {
+    if (mode === "text") return text.trim().length > 0;
+    if (mode === "poll") return pollQuestion.trim() && pollOptions.filter(Boolean).length >= 2;
+    return !!file;
+  }, [mode, text, pollQuestion, pollOptions, file]);
+
+  const chooseFile = (next) => {
+    if (!next) return;
+    if (!next.type.startsWith("image/") && !next.type.startsWith("video/")) {
       showToast("Photo ou vidéo uniquement", "error");
       return;
     }
-    if (file.size > 100 * 1024 * 1024) {
+    if (next.size > MAX_FILE_SIZE) {
       showToast("Fichier trop lourd (100 Mo max)", "error");
       return;
     }
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    setStoryFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(next);
+    setPreview(URL.createObjectURL(next));
+    setMode(next.type.startsWith("video/") ? "video" : "image");
   };
 
-  const handleCreateStory = async () => {
-    if (!storyFile) return showToast("Choisis une photo ou vidéo", "error");
+  const publish = async () => {
+    if (!canPublish || publishing) return;
+    const { data: auth } = await supabase.auth.getUser();
+    const currentUser = auth?.user;
+    if (!currentUser) {
+      showToast("Connecte-toi pour publier une story", "error");
+      return;
+    }
 
-    const {
-      data: { user: currentUser },
-    } = await supabase.auth.getUser();
-    if (!currentUser) return showToast("Tu n'es pas connecté", "error");
-
-    setUploadingStory(true);
+    setPublishing(true);
     try {
-      const ext = (storyFile.name.split(".").pop() || "jpg").toLowerCase();
-      const path = `${currentUser.id}/${crypto.randomUUID()}.${ext}`;
+      let mediaUrl = null;
+      let mediaType = null;
 
-      const { error: upErr } = await supabase.storage
+      if (file) {
+        const ext = (file.name.split(".").pop() || (mode === "video" ? "mp4" : "jpg")).toLowerCase();
+        const path = `${currentUser.id}/${crypto.randomUUID()}.${ext}`;
+        const { error } = await supabase.storage.from("stories").upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type,
+        });
+        if (error) throw error;
+        mediaUrl = supabase.storage.from("stories").getPublicUrl(path).data.publicUrl;
+        mediaType = mode === "video" ? "video" : "image";
+      }
+
+      const storyPayload = {
+        author_id: currentUser.id,
+        story_type: mode === "poll" ? "poll" : mode,
+        media_url: mediaUrl,
+        media_type: mediaType,
+        text: mode === "text" ? text.trim() : null,
+        text_overlay: text.trim() || null,
+        background: mode === "text" ? background : null,
+        duration_seconds: mode === "video" ? 15 : 5,
+        expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+
+      const { data: story, error: storyError } = await supabase
         .from("stories")
-        .upload(path, storyFile);
-      if (upErr) throw upErr;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("stories").getPublicUrl(path);
-      const isVideo = storyFile.type.startsWith("video");
-
-      const { data: createdStory, error: storyErr } = await supabase
-        .from("stories")
-        .insert({
-          author_id: currentUser.id,
-          media_url: publicUrl,
-          media_type: isVideo ? "video" : "image",
-          text_overlay: storyText.trim() || null,
-          expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-        })
+        .insert(storyPayload)
         .select("id")
         .single();
-      if (storyErr) throw storyErr;
+      if (storyError) throw storyError;
 
-      showToast("Statut publié !", "success");
-      setStoryRefreshKey((k) => k + 1);
-      setShowCreateStory(false);
-      setStoryFile(null);
-      setStoryText("");
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-      setPreviewUrl(null);
-      onRewardPoints?.("publish_story", "Story publiée", createdStory?.id);
+      if (mode === "poll") {
+        const question = pollQuestion.trim();
+        const options = pollOptions.map((v) => v.trim()).filter(Boolean).slice(0, 4);
+        const { data: poll, error: pollError } = await supabase
+          .from("story_polls")
+          .insert({ story_id: story.id, question })
+          .select("id")
+          .single();
+        if (pollError) throw pollError;
+
+        const { error: optionsError } = await supabase
+          .from("story_poll_options")
+          .insert(options.map((option_text, position) => ({
+            poll_id: poll.id,
+            option_text,
+            position,
+          })));
+        if (optionsError) throw optionsError;
+      }
+
+      showToast("Story publiée !", "success");
       showPointsReward?.(15, "Story publiée");
-    } catch (err) {
-      showToast("Erreur statut : " + (err.message || "échec"), "error");
+      onRewardPoints?.("publish_story", "Story publiée", story.id);
+      setStoryRefreshKey((k) => k + 1);
+      reset();
+    } catch (e) {
+      showToast("Erreur : " + (e?.message || "publication impossible"), "error");
     } finally {
-      setUploadingStory(false);
+      setPublishing(false);
     }
   };
+
+  const updateOption = (index, value) =>
+    setPollOptions((items) => items.map((v, i) => (i === index ? value : v)));
 
   return (
     <>
       <div
         className="rounded-2xl border mb-2 overflow-hidden"
-        style={{
-          borderColor: COLORS.borderGold || "rgba(217,174,82,0.35)",
-          background: "rgba(0,0,0,0.25)",
-        }}
+        style={{ borderColor: COLORS.borderGold || "rgba(217,174,82,.35)", background: "rgba(0,0,0,.25)" }}
       >
         <div className="px-3 pt-2 flex items-center justify-between">
-          <span
-            className="text-[10px] font-bold uppercase tracking-widest"
-            style={{ color: COLORS.muted }}
-          >
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: COLORS.muted }}>
             Statuts
           </span>
-          <span className="text-[10px]" style={{ color: COLORS.muted }}>
-            24 h
-          </span>
+          <span className="text-[10px]" style={{ color: COLORS.muted }}>24 h</span>
         </div>
-        <StoriesBar
-          refreshKey={storyRefreshKey}
-          onOpenStory={setStoryGroup}
-          onCreateStory={() => setShowCreateStory(true)}
-        />
+        <StoriesBar refreshKey={storyRefreshKey} onOpenStory={setStoryGroup} onCreateStory={() => setOpen(true)} />
       </div>
 
       {storyGroup && (
-        <StoryViewer
-          group={storyGroup}
-          onClose={() => setStoryGroup(null)}
-          currentUserId={userId}
-        />
+        <StoryViewer group={storyGroup} onClose={() => setStoryGroup(null)} currentUserId={userId} />
       )}
 
-      {showCreateStory && (
-        <div className="fixed inset-0 z-[90] flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-sm p-0 sm:p-4">
-          <div
-            className="w-full max-w-md rounded-t-3xl sm:rounded-2xl border p-5 pb-8"
-            style={{
-              background: COLORS.surface || "#111A2C",
-              borderColor: COLORS.borderGold,
-            }}
-          >
+      {open && (
+        <div className="fixed inset-0 z-[100] bg-black/85 backdrop-blur-sm flex items-end sm:items-center justify-center">
+          <div className="w-full max-w-md max-h-[92vh] overflow-y-auto rounded-t-3xl sm:rounded-3xl p-5 border"
+               style={{ background: COLORS.surface || "#111827", borderColor: COLORS.borderGold || "#80652c" }}>
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-white text-base">Nouveau statut</h3>
-              <button
-                type="button"
-                onClick={() => {
-                  setShowCreateStory(false);
-                  setStoryFile(null);
-                  if (previewUrl) URL.revokeObjectURL(previewUrl);
-                  setPreviewUrl(null);
-                }}
-                className="p-2 text-gray-400"
-              >
-                <X size={22} />
-              </button>
+              <h3 className="text-white font-bold text-lg">Créer une story</h3>
+              <button onClick={reset} className="p-2 text-white/70"><X size={22} /></button>
             </div>
 
-            <div
-              onClick={() => document.getElementById("feed-story-input")?.click()}
-              className="border-2 border-dashed rounded-xl p-6 text-center cursor-pointer mb-3 min-h-[160px] flex flex-col items-center justify-center"
-              style={{
-                borderColor: storyFile ? COLORS.gold : "rgba(255,255,255,0.15)",
-              }}
-            >
-              {previewUrl ? (
-                storyFile?.type.startsWith("video") ? (
-                  <video
-                    src={previewUrl}
-                    className="max-h-48 rounded-lg"
-                    controls
-                  />
-                ) : (
-                  <img
-                    src={previewUrl}
-                    alt=""
-                    className="max-h-48 rounded-lg object-contain"
-                  />
-                )
-              ) : (
-                <>
-                  <div className="text-3xl mb-2">📷</div>
-                  <p className="text-sm text-gray-400">Photo ou vidéo</p>
-                  <p className="text-[10px] text-gray-500 mt-1">Expire dans 24 h</p>
-                </>
-              )}
-              <input
-                id="feed-story-input"
-                type="file"
-                accept="image/*,video/*"
-                className="hidden"
-                onChange={(e) => handleFile(e.target.files?.[0])}
-              />
+            <div className="grid grid-cols-4 gap-2 mb-4">
+              {[
+                ["text", <Type size={17} />, "Texte"],
+                ["image", <ImageIcon size={17} />, "Photo"],
+                ["video", <Video size={17} />, "Vidéo"],
+                ["poll", <BarChart3 size={17} />, "Sondage"],
+              ].map(([value, icon, label]) => (
+                <button key={value} onClick={() => setMode(value)}
+                  className="rounded-xl py-2 text-[11px] flex flex-col items-center gap-1 border"
+                  style={{
+                    borderColor: mode === value ? COLORS.gold : "rgba(255,255,255,.1)",
+                    color: mode === value ? COLORS.gold : "#aaa"
+                  }}>
+                  {icon}{label}
+                </button>
+              ))}
             </div>
 
-            <input
-              type="text"
-              value={storyText}
-              onChange={(e) => setStoryText(e.target.value)}
-              placeholder="Légende (optionnel)"
-              maxLength={120}
-              className="w-full mb-4 rounded-xl px-3 py-2.5 text-sm bg-black/40 text-white outline-none border border-white/10"
-            />
+            {mode === "text" && (
+              <div className="space-y-3">
+                <div className="min-h-52 rounded-2xl p-5 flex items-center justify-center text-center"
+                     style={{ background, color: "#fff" }}>
+                  <textarea value={text} onChange={(e) => setText(e.target.value.slice(0, MAX_TEXT))}
+                    placeholder="Écris ta story…" className="w-full bg-transparent outline-none resize-none text-2xl font-bold text-center placeholder:text-white/50" />
+                </div>
+                <div className="flex gap-2 overflow-x-auto">
+                  {STORY_BACKGROUNDS.map((bg, i) => (
+                    <button key={i} onClick={() => setBackground(bg)}
+                      className="w-10 h-10 rounded-full shrink-0 border-2"
+                      style={{ background: bg, borderColor: background === bg ? COLORS.gold : "transparent" }} />
+                  ))}
+                </div>
+              </div>
+            )}
 
-            <button
-              type="button"
-              disabled={!storyFile || uploadingStory}
-              onClick={handleCreateStory}
-              className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-40"
-              style={{ background: COLORS.gold, color: "#000" }}
-            >
-              {uploadingStory ? "Publication…" : "Publier le statut"}
+            {(mode === "image" || mode === "video") && (
+              <div className="space-y-3">
+                <label className="block rounded-2xl border-2 border-dashed p-4 text-center cursor-pointer"
+                       style={{ borderColor: file ? COLORS.gold : "rgba(255,255,255,.15)" }}>
+                  <input type="file" accept={mode === "video" ? "video/*" : "image/*"} className="hidden"
+                    onChange={(e) => chooseFile(e.target.files?.[0])} />
+                  {preview ? (
+                    mode === "video" ? <video src={preview} controls playsInline className="max-h-72 mx-auto rounded-xl" /> :
+                    <img src={preview} alt="" className="max-h-72 mx-auto rounded-xl object-contain" />
+                  ) : (
+                    <div className="py-12 text-white/50">
+                      {mode === "video" ? <Video size={36} className="mx-auto mb-2" /> : <ImageIcon size={36} className="mx-auto mb-2" />}
+                      Choisir {mode === "video" ? "une vidéo" : "une photo"}
+                    </div>
+                  )}
+                </label>
+                <input value={text} onChange={(e) => setText(e.target.value.slice(0, MAX_TEXT))}
+                  placeholder="Ajouter un texte / une légende…" className="w-full rounded-xl bg-black/30 border border-white/10 p-3 text-white outline-none" />
+              </div>
+            )}
+
+            {mode === "poll" && (
+              <div className="space-y-3">
+                <div className="rounded-2xl p-5" style={{ background: background, color: "#fff" }}>
+                  <BarChart3 className="mx-auto mb-3" size={34} />
+                  <input value={pollQuestion} onChange={(e) => setPollQuestion(e.target.value.slice(0, 240))}
+                    placeholder="Ta question ?" className="w-full bg-transparent outline-none text-xl font-bold text-center placeholder:text-white/50" />
+                </div>
+                {pollOptions.map((value, i) => (
+                  <input key={i} value={value} onChange={(e) => updateOption(i, e.target.value.slice(0, 100))}
+                    placeholder={`Choix ${i + 1}`} className="w-full rounded-xl bg-black/30 border border-white/10 p-3 text-white outline-none" />
+                ))}
+                {pollOptions.length < 4 && (
+                  <button onClick={() => setPollOptions((x) => [...x, ""])} className="text-sm" style={{ color: COLORS.gold }}>
+                    + Ajouter un choix
+                  </button>
+                )}
+              </div>
+            )}
+
+            <button disabled={!canPublish || publishing} onClick={publish}
+              className="w-full mt-5 rounded-xl py-3 font-bold disabled:opacity-40 flex items-center justify-center gap-2"
+              style={{ background: COLORS.gold, color: "#000" }}>
+              <Send size={17} /> {publishing ? "Publication…" : "Publier"}
             </button>
           </div>
         </div>
