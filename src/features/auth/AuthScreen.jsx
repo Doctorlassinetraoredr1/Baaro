@@ -7,6 +7,7 @@ import { captureRefFromUrl, getPendingRef } from "../../lib/referralApi.js";
 
 /**
  * Authentification BAARO : invité, email/mot de passe, téléphone OTP et OAuth.
+ * Limite : max 3 comptes personnels / 1 entreprise par identité liée.
  * OAuth attend les providers activés dans Supabase (facebook, twitter/X, google).
  */
 export default function AuthScreen() {
@@ -17,6 +18,7 @@ export default function AuthScreen() {
   const [phoneCode, setPhoneCode] = useState("");
   const [phoneStep, setPhoneStep] = useState("request");
   const [isLogin, setIsLogin] = useState(true);
+  const [isBusiness, setIsBusiness] = useState(false);
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(null);
   const [error, setError] = useState(null);
@@ -29,9 +31,66 @@ export default function AuthScreen() {
     setPendingRef(getPendingRef());
   }, []);
 
+  // Retour OAuth : appliquer la limite de comptes
+  useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event !== "SIGNED_IN" || !session?.user) return;
+      // Invité : pas de limite
+      if (session.user.is_anonymous) return;
+      await enforceAccountLimit(session.user, false);
+    });
+    return () => sub?.subscription?.unsubscribe?.();
+  }, []);
+
   const resetMessages = () => {
     setError(null);
     setNotice(null);
+  };
+
+  /** Max 3 comptes perso / 1 entreprise. Retourne false si refusé. */
+  const enforceAccountLimit = async (user, businessFlag = false) => {
+    if (!user?.id) return true;
+    const identities = [];
+    if (user.email) identities.push({ type: "email", value: user.email });
+    if (user.phone) identities.push({ type: "phone", value: user.phone });
+    const provider = user.app_metadata?.provider;
+    if (provider && provider !== "email" && provider !== "phone") {
+      identities.push({
+        type: provider === "twitter" ? "twitter" : provider,
+        value: user.id,
+      });
+    }
+    if (!identities.length) return true;
+
+    try {
+      const { data, error: rpcError } = await supabase.rpc(
+        "register_identity_and_check_limit",
+        {
+          p_user_id: user.id,
+          p_identities: identities,
+          p_is_business: !!businessFlag,
+        }
+      );
+      if (rpcError) {
+        console.warn("account limit rpc:", rpcError);
+        return true;
+      }
+      if (data && data.ok === false) {
+        await supabase.auth.signOut();
+        setError(
+          data.message ||
+            (businessFlag
+              ? "Une seule entreprise autorisée pour ces identifiants."
+              : "Maximum 3 comptes personnels pour cette personne.")
+        );
+        setOauthLoading(null);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn("enforceAccountLimit:", e);
+      return true;
+    }
   };
 
   const handleAnonymous = async (token) => {
@@ -60,8 +119,15 @@ export default function AuthScreen() {
     resetMessages();
     try {
       if (isLogin) {
-        const { error: authError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        const { data, error: authError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
         if (authError) throw authError;
+        if (data?.user) {
+          const ok = await enforceAccountLimit(data.user, isBusiness);
+          if (!ok) return;
+        }
       } else {
         const { data, error: authError } = await supabase.auth.signUp({
           email: email.trim(),
@@ -71,12 +137,19 @@ export default function AuthScreen() {
             data: {
               display_name: email.trim().split("@")[0],
               handle: `@${email.trim().split("@")[0].slice(0, 20)}`,
+              is_business: isBusiness,
             },
           },
         });
         if (authError) throw authError;
+        if (data?.user) {
+          const ok = await enforceAccountLimit(data.user, isBusiness);
+          if (!ok) return;
+        }
         if (data?.user && !data?.session) {
-          setNotice("Compte créé. Vérifiez votre e-mail pour confirmer votre adresse avant de vous connecter.");
+          setNotice(
+            "Compte créé. Vérifiez votre e-mail pour confirmer votre adresse avant de vous connecter."
+          );
         }
       }
     } catch (err) {
@@ -102,12 +175,17 @@ export default function AuthScreen() {
     try {
       const { error: authError } = await supabase.auth.signInWithOtp({
         phone: normalized,
-        options: { shouldCreateUser: true },
+        options: {
+          shouldCreateUser: true,
+          data: { is_business: isBusiness },
+        },
       });
       if (authError) throw authError;
       setPhone(normalized);
       setPhoneStep("verify");
-      setNotice("Code envoyé par SMS. Saisissez-le pour créer ou ouvrir votre compte BAARO.");
+      setNotice(
+        "Code envoyé par SMS. Saisissez-le pour créer ou ouvrir votre compte BAARO."
+      );
     } catch (err) {
       setError(err.message || "Impossible d'envoyer le code SMS.");
     } finally {
@@ -131,7 +209,13 @@ export default function AuthScreen() {
         type: "sms",
       });
       if (authError) throw authError;
-      if (!data?.session) throw new Error("Session non créée après vérification du numéro.");
+      if (!data?.session) {
+        throw new Error("Session non créée après vérification du numéro.");
+      }
+      if (data?.user) {
+        const ok = await enforceAccountLimit(data.user, isBusiness);
+        if (!ok) return;
+      }
     } catch (err) {
       setError(err.message || "Code SMS invalide ou expiré.");
     } finally {
@@ -151,6 +235,7 @@ export default function AuthScreen() {
         },
       });
       if (authError) throw authError;
+      // La limite est appliquée au retour via onAuthStateChange
     } catch (err) {
       setError(err.message || `Connexion ${provider} impossible.`);
       setOauthLoading(null);
@@ -175,8 +260,12 @@ export default function AuthScreen() {
           >
             B
           </div>
-          <h1 className="text-2xl font-bold tracking-wide" style={{ color: COLORS.gold || "#D9AE52" }}>BAARO</h1>
-          <p className="text-base font-semibold mt-1.5" style={{ color: COLORS.ivory || "#f1f5f9" }}>Gagne. Échange. Convertis.</p>
+          <h1 className="text-2xl font-bold tracking-wide" style={{ color: COLORS.gold || "#D9AE52" }}>
+            BAARO
+          </h1>
+          <p className="text-base font-semibold mt-1.5" style={{ color: COLORS.ivory || "#f1f5f9" }}>
+            Gagne. Échange. Convertis.
+          </p>
           <p className="text-sm mt-2 leading-relaxed px-1" style={{ color: COLORS.muted || "#94a3b8" }}>
             Crée ton compte avec ton e-mail, ton numéro ou un réseau social.
           </p>
@@ -188,55 +277,118 @@ export default function AuthScreen() {
             { icon: Radio, label: "Lives + IA", color: COLORS.purple },
             { icon: Shield, label: "Compte sécurisé", color: COLORS.teal },
           ].map(({ icon: Icon, label, color }) => (
-            <div key={label} className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-center" style={{ background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)" }}>
+            <div
+              key={label}
+              className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-center"
+              style={{ background: "rgba(255,255,255,0.03)", borderColor: "rgba(255,255,255,0.08)" }}
+            >
               <Icon size={18} style={{ color }} />
-              <span className="text-[10px] font-medium leading-tight" style={{ color: COLORS.muted }}>{label}</span>
+              <span className="text-[10px] font-medium leading-tight" style={{ color: COLORS.muted }}>
+                {label}
+              </span>
             </div>
           ))}
         </div>
 
         {pendingRef && (
-          <div className="mb-5 p-3 rounded-xl text-xs text-center border" style={{ background: "rgba(45,191,166,0.1)", borderColor: COLORS.borderTeal, color: COLORS.teal }}>
+          <div
+            className="mb-5 p-3 rounded-xl text-xs text-center border"
+            style={{
+              background: "rgba(45,191,166,0.1)",
+              borderColor: COLORS.borderTeal,
+              color: COLORS.teal,
+            }}
+          >
             Code parrain détecté : <strong className="font-mono">{pendingRef}</strong>
-            <br />Il sera appliqué après création du compte.
+            <br />
+            Il sera appliqué après création du compte.
           </div>
         )}
 
         {mode === "anonymous" && (
           <div className="flex flex-col gap-4">
             <div className="flex justify-center">
-              <TurnstileWidget onVerify={(token) => { setCaptchaToken(token); }} />
+              <TurnstileWidget
+                onVerify={(token) => {
+                  setCaptchaToken(token);
+                }}
+              />
             </div>
 
             <div className="flex items-center gap-3">
               <div className="flex-1 h-px" style={{ background: COLORS.border || "#334155" }} />
-              <span className="text-xs" style={{ color: COLORS.muted }}>Créer / se connecter</span>
+              <span className="text-xs" style={{ color: COLORS.muted }}>
+                Créer / se connecter
+              </span>
               <div className="flex-1 h-px" style={{ background: COLORS.border || "#334155" }} />
             </div>
 
-            <button type="button" onClick={() => { setMode("email"); setIsLogin(false); resetMessages(); }} className="w-full py-3 rounded-xl font-semibold text-sm border flex items-center justify-center gap-2" style={inputStyle}>
-              <Mail size={17} /> S'inscrire avec e-mail
+            <button
+              type="button"
+              onClick={() => {
+                setMode("email");
+                setIsLogin(false);
+                resetMessages();
+              }}
+              className="w-full py-3 rounded-xl font-semibold text-sm border flex items-center justify-center gap-2"
+              style={inputStyle}
+            >
+              <Mail size={17} /> S&apos;inscrire avec e-mail
             </button>
-            <button type="button" onClick={() => { setMode("phone"); setPhoneStep("request"); resetMessages(); }} className="w-full py-3 rounded-xl font-semibold text-sm border flex items-center justify-center gap-2" style={inputStyle}>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("phone");
+                setPhoneStep("request");
+                resetMessages();
+              }}
+              className="w-full py-3 rounded-xl font-semibold text-sm border flex items-center justify-center gap-2"
+              style={inputStyle}
+            >
               <Phone size={17} /> Numéro de téléphone (SMS)
             </button>
 
             <div className="grid grid-cols-3 gap-2">
-              <button type="button" onClick={() => handleOAuth("facebook")} disabled={!!oauthLoading} className="py-3 rounded-xl font-semibold text-xs disabled:opacity-50" style={{ background: "#1877F2", color: "#fff" }}>
+              <button
+                type="button"
+                onClick={() => handleOAuth("facebook")}
+                disabled={!!oauthLoading}
+                className="py-3 rounded-xl font-semibold text-xs disabled:opacity-50"
+                style={{ background: "#1877F2", color: "#fff" }}
+              >
                 <Facebook size={16} className="mx-auto mb-1" /> Facebook
               </button>
-              <button type="button" onClick={() => handleOAuth("twitter")} disabled={!!oauthLoading} className="py-3 rounded-xl font-semibold text-xs disabled:opacity-50" style={{ background: "#000", color: "#fff", border: "1px solid #334155" }}>
+              <button
+                type="button"
+                onClick={() => handleOAuth("twitter")}
+                disabled={!!oauthLoading}
+                className="py-3 rounded-xl font-semibold text-xs disabled:opacity-50"
+                style={{ background: "#000", color: "#fff", border: "1px solid #334155" }}
+              >
                 <X size={16} className="mx-auto mb-1" /> X
               </button>
-              <button type="button" onClick={() => handleOAuth("google")} disabled={!!oauthLoading} className="py-3 rounded-xl font-semibold text-xs disabled:opacity-50" style={{ background: "#fff", color: "#111827" }}>
+              <button
+                type="button"
+                onClick={() => handleOAuth("google")}
+                disabled={!!oauthLoading}
+                className="py-3 rounded-xl font-semibold text-xs disabled:opacity-50"
+                style={{ background: "#fff", color: "#111827" }}
+              >
                 <span className="text-base font-bold block mb-0.5">G</span> Google
               </button>
             </div>
 
-            {oauthLoading && <div className="text-center text-xs" style={{ color: COLORS.muted }}>Redirection vers {oauthLoading}...</div>}
+            {oauthLoading && (
+              <div className="text-center text-xs" style={{ color: COLORS.muted }}>
+                Redirection vers {oauthLoading}...
+              </div>
+            )}
             <button
               type="button"
-              onClick={() => { setCaptchaToken(null); handleAnonymous(null); }}
+              onClick={() => {
+                setCaptchaToken(null);
+                handleAnonymous(null);
+              }}
               disabled={loading}
               className="w-full py-3 rounded-xl font-semibold text-sm border transition disabled:opacity-50"
               style={{ borderColor: COLORS.border, color: COLORS.muted }}
@@ -244,42 +396,211 @@ export default function AuthScreen() {
               Continuer en invité
             </button>
             <p className="text-[10px] text-center leading-relaxed" style={{ color: COLORS.muted }}>
-              Aucun compte n'est créé automatiquement. Choisis une méthode d'inscription ou continue volontairement en invité.
+              Max 3 comptes personnels · 1 compte entreprise. Aucun compte n&apos;est créé
+              automatiquement en mode invité.
             </p>
           </div>
         )}
 
         {mode === "email" && (
           <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
-            <div className="flex rounded-xl border p-1" style={{ borderColor: COLORS.border || "#334155" }}>
-              <button type="button" onClick={() => { setIsLogin(true); resetMessages(); }} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: isLogin ? "rgba(217,174,82,.15)" : "transparent", color: isLogin ? COLORS.gold : COLORS.muted }}>Connexion</button>
-              <button type="button" onClick={() => { setIsLogin(false); resetMessages(); }} className="flex-1 py-2 rounded-lg text-xs font-semibold" style={{ background: !isLogin ? "rgba(45,191,166,.15)" : "transparent", color: !isLogin ? COLORS.teal : COLORS.muted }}>Inscription</button>
+            <div
+              className="flex rounded-xl border p-1"
+              style={{ borderColor: COLORS.border || "#334155" }}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogin(true);
+                  resetMessages();
+                }}
+                className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                style={{
+                  background: isLogin ? "rgba(217,174,82,.15)" : "transparent",
+                  color: isLogin ? COLORS.gold : COLORS.muted,
+                }}
+              >
+                Connexion
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsLogin(false);
+                  resetMessages();
+                }}
+                className="flex-1 py-2 rounded-lg text-xs font-semibold"
+                style={{
+                  background: !isLogin ? "rgba(45,191,166,.15)" : "transparent",
+                  color: !isLogin ? COLORS.teal : COLORS.muted,
+                }}
+              >
+                Inscription
+              </button>
             </div>
-            <input type="email" placeholder="Adresse e-mail" value={email} onChange={(e) => setEmail(e.target.value)} required className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm" style={inputStyle} />
-            <input type="password" placeholder="Mot de passe (6 caractères minimum)" value={password} onChange={(e) => setPassword(e.target.value)} required minLength={6} className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm" style={inputStyle} />
-            <button type="submit" disabled={loading} className="w-full py-3 rounded-xl font-bold text-sm transition disabled:opacity-50" style={{ background: "linear-gradient(135deg, #D9AE52 0%, #2DBFA6 100%)", color: "#0B1220" }}>
+            <input
+              type="email"
+              placeholder="Adresse e-mail"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm"
+              style={inputStyle}
+            />
+            <input
+              type="password"
+              placeholder="Mot de passe (6 caractères minimum)"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              minLength={6}
+              className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm"
+              style={inputStyle}
+            />
+            {!isLogin && (
+              <label
+                className="flex items-center gap-2 text-xs cursor-pointer"
+                style={{ color: COLORS.muted }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isBusiness}
+                  onChange={(e) => setIsBusiness(e.target.checked)}
+                />
+                Compte entreprise (1 seul autorisé)
+              </label>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-xl font-bold text-sm transition disabled:opacity-50"
+              style={{
+                background: "linear-gradient(135deg, #D9AE52 0%, #2DBFA6 100%)",
+                color: "#0B1220",
+              }}
+            >
               {loading ? "Chargement..." : isLogin ? "Se connecter" : "Créer mon compte"}
             </button>
-            <button type="button" onClick={() => { setMode("anonymous"); resetMessages(); }} className="text-sm underline" style={{ color: COLORS.muted }}>Retour</button>
+            <button
+              type="button"
+              onClick={() => {
+                setMode("anonymous");
+                resetMessages();
+              }}
+              className="text-sm underline"
+              style={{ color: COLORS.muted }}
+            >
+              Retour
+            </button>
           </form>
         )}
 
         {mode === "phone" && (
-          <form onSubmit={phoneStep === "request" ? requestPhoneCode : verifyPhoneCode} className="flex flex-col gap-4">
-            <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: COLORS.ivory }}><Phone size={18} style={{ color: COLORS.teal }} /> Compte par numéro</div>
-            <p className="text-xs leading-relaxed" style={{ color: COLORS.muted }}>Utilisez le format international, par exemple +223XXXXXXXX. Un code de vérification sera envoyé par SMS.</p>
-            <input type="tel" inputMode="tel" autoComplete="tel" placeholder="+223XXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} disabled={phoneStep === "verify"} required className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm" style={inputStyle} />
-            {phoneStep === "verify" && <input type="text" inputMode="numeric" autoComplete="one-time-code" placeholder="Code reçu par SMS" value={phoneCode} onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, "").slice(0, 8))} required className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm tracking-[0.35em] text-center" style={inputStyle} />}
-            <button type="submit" disabled={loading} className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50" style={{ background: "linear-gradient(135deg, #D9AE52 0%, #2DBFA6 100%)", color: "#0B1220" }}>
-              {loading ? "Vérification..." : phoneStep === "request" ? "Envoyer le code SMS" : "Vérifier et créer le compte"}
+          <form
+            onSubmit={phoneStep === "request" ? requestPhoneCode : verifyPhoneCode}
+            className="flex flex-col gap-4"
+          >
+            <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: COLORS.ivory }}>
+              <Phone size={18} style={{ color: COLORS.teal }} /> Compte par numéro
+            </div>
+            <p className="text-xs leading-relaxed" style={{ color: COLORS.muted }}>
+              Utilisez le format international, par exemple +223XXXXXXXX. Un code de vérification
+              sera envoyé par SMS.
+            </p>
+            <input
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="+223XXXXXXXX"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              disabled={phoneStep === "verify"}
+              required
+              className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm"
+              style={inputStyle}
+            />
+            {phoneStep === "request" && (
+              <label
+                className="flex items-center gap-2 text-xs cursor-pointer"
+                style={{ color: COLORS.muted }}
+              >
+                <input
+                  type="checkbox"
+                  checked={isBusiness}
+                  onChange={(e) => setIsBusiness(e.target.checked)}
+                />
+                Compte entreprise (1 seul autorisé)
+              </label>
+            )}
+            {phoneStep === "verify" && (
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="Code reçu par SMS"
+                value={phoneCode}
+                onChange={(e) => setPhoneCode(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                required
+                className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm tracking-[0.35em] text-center"
+                style={inputStyle}
+              />
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+              style={{
+                background: "linear-gradient(135deg, #D9AE52 0%, #2DBFA6 100%)",
+                color: "#0B1220",
+              }}
+            >
+              {loading
+                ? "Vérification..."
+                : phoneStep === "request"
+                  ? "Envoyer le code SMS"
+                  : "Vérifier et créer le compte"}
             </button>
-            {phoneStep === "verify" && <button type="button" onClick={() => { setPhoneStep("request"); setPhoneCode(""); resetMessages(); }} className="text-xs underline" style={{ color: COLORS.muted }}>Modifier le numéro / renvoyer un code</button>}
-            <button type="button" onClick={() => { setMode("anonymous"); setPhoneStep("request"); resetMessages(); }} className="text-sm underline" style={{ color: COLORS.muted }}>Retour</button>
+            {phoneStep === "verify" && (
+              <button
+                type="button"
+                onClick={() => {
+                  setPhoneStep("request");
+                  setPhoneCode("");
+                  resetMessages();
+                }}
+                className="text-xs underline"
+                style={{ color: COLORS.muted }}
+              >
+                Modifier le numéro / renvoyer un code
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setMode("anonymous");
+                setPhoneStep("request");
+                resetMessages();
+              }}
+              className="text-sm underline"
+              style={{ color: COLORS.muted }}
+            >
+              Retour
+            </button>
           </form>
         )}
 
-        {notice && <div className="mt-4 text-center text-sm rounded-xl p-3" style={{ color: COLORS.teal, background: "rgba(45,191,166,.1)" }}>{notice}</div>}
-        {error && <div className="mt-4 text-center text-sm text-rose-400 bg-rose-500/10 rounded-xl p-3">{error}</div>}
+        {notice && (
+          <div
+            className="mt-4 text-center text-sm rounded-xl p-3"
+            style={{ color: COLORS.teal, background: "rgba(45,191,166,.1)" }}
+          >
+            {notice}
+          </div>
+        )}
+        {error && (
+          <div className="mt-4 text-center text-sm text-rose-400 bg-rose-500/10 rounded-xl p-3">
+            {error}
+          </div>
+        )}
       </div>
     </div>
   );
