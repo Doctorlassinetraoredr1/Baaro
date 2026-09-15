@@ -63,7 +63,7 @@ export async function searchProfiles(query, limit = 20, opts = {}) {
   return run(
     supabase
       .from("profiles")
-      .select("user_id, display_name, handle, flag, bio")
+      .select("id, display_name, handle, flag, bio")
       .or(`display_name.ilike.%${q}%,handle.ilike.%${q}%`)
       .limit(limit),
     { ...opts, fallback: "Erreur recherche" }

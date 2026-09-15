@@ -47,6 +47,6 @@ export function subscribeRoles(debateId, callback) {
 
 // Récupérer tous les participants avec rôles
 export async function getLiveParticipants(debateId) {
-  const { data } = await supabase.from('debate_participants').select('*, profiles!debate_participants_user_id_fkey(username, avatar_url)').eq('debate_id', debateId)
+  const { data } = await supabase.from('debate_participants').select('*, profiles(display_name, avatar_url)').eq('debate_id', debateId)
   return data || []
 }
