@@ -197,12 +197,17 @@ export function SocialSuggestions({ userId, onOpenProfile }) {
     supabase.rpc("get_social_suggestions",{p_limit:6}).then(({data})=>setItems(data||[]));
   },[userId]);
 
+  // Compatible id (nouveau) et user_id (ancien RPC)
+  const uid = (item) => item?.id || item?.user_id;
+
   const follow=async(item)=>{
-    setBusyId(item.user_id);
+    const target = uid(item);
+    if (!target) return;
+    setBusyId(target);
     try{
-      const {data,error}=await supabase.rpc("toggle_follow",{p_target:item.user_id});
+      const {data,error}=await supabase.rpc("toggle_follow",{p_target:target});
       if(error) throw error;
-      if(data){setItems(prev=>prev.filter(x=>x.user_id!==item.user_id));showToast("Abonnement ajouté","success");}
+      if(data){setItems(prev=>prev.filter(x=>uid(x)!==target));showToast("Abonnement ajouté","success");}
     }catch{showToast("Impossible de suivre ce compte","error");}
     finally{setBusyId(null);}
   };
@@ -212,19 +217,21 @@ export function SocialSuggestions({ userId, onOpenProfile }) {
     <section className="glass-card rounded-2xl p-4 border" style={{borderColor:COLORS.border}}>
       <div className="flex items-center gap-2 mb-3"><Zap size={16} style={{color:COLORS.gold}}/><h3 className="font-bold text-sm" style={{color:COLORS.ivory}}>Comptes à découvrir</h3></div>
       <div className="flex gap-3 overflow-x-auto pb-1">
-        {items.map(item=>(
-          <div key={item.user_id} className="min-w-[160px] rounded-xl border p-3" style={{borderColor:COLORS.border,background:COLORS.surface}}>
-            <button type="button" onClick={()=>onOpenProfile?.(item.user_id)} className="flex items-center gap-2 text-left w-full">
+        {items.map(item=>{
+          const id = uid(item);
+          return (
+          <div key={id} className="min-w-[160px] rounded-xl border p-3" style={{borderColor:COLORS.border,background:COLORS.surface}}>
+            <button type="button" onClick={()=>onOpenProfile?.(id)} className="flex items-center gap-2 text-left w-full">
               <div className="w-9 h-9 rounded-full overflow-hidden border flex items-center justify-center" style={{borderColor:COLORS.borderGold}}>
                 {item.avatar_url?<img src={item.avatar_url} alt="" className="w-full h-full object-cover"/>:<span style={{color:COLORS.gold}}>{item.display_name?.charAt(0)||"?"}</span>}
               </div>
               <div className="min-w-0"><p className="font-semibold text-xs truncate" style={{color:COLORS.ivory}}>{item.display_name||"Membre"}</p><p className="text-[10px] truncate" style={{color:COLORS.muted}}>{item.handle||""}</p></div>
             </button>
-            <button type="button" onClick={()=>follow(item)} disabled={busyId===item.user_id} className="mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold" style={{background:COLORS.gold,color:COLORS.bg}}>
-              {busyId===item.user_id?"…":"Suivre"}
+            <button type="button" onClick={()=>follow(item)} disabled={busyId===id} className="mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold" style={{background:COLORS.gold,color:COLORS.bg}}>
+              {busyId===id?"…":"Suivre"}
             </button>
           </div>
-        ))}
+        );})}
       </div>
     </section>
   );

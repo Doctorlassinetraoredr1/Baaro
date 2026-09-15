@@ -104,7 +104,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
         created_at,
         likes_count,
         comments_count,
-        profiles!posts_author_id_fkey (
+        profiles (
           display_name,
           handle,
           flag,
