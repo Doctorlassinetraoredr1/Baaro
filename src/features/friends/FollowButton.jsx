@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../../supabaseClient.js';
-import { useToast } from '../../components/ToastContext.jsx'; // Assurez-vous que ce chemin est correct
+import { useToast } from '../../components/ToastContext.jsx';
 
 export default function FollowButton({ targetUserId, currentUserId }) {
   const [isFollowing, setIsFollowing] = useState(false);
@@ -8,77 +8,68 @@ export default function FollowButton({ targetUserId, currentUserId }) {
   const { showToast } = useToast();
 
   useEffect(() => {
-    if (!currentUserId || !targetUserId) return;
-    
-    // Vérifier l'état initial
+    let active = true;
+    if (!currentUserId || !targetUserId || currentUserId === targetUserId) return undefined;
+
     const checkFollow = async () => {
       const { data, error } = await supabase
         .from('follows')
-        .select('follower_id')
+        .select('id')
         .eq('follower_id', currentUserId)
         .eq('followed_id', targetUserId)
-        .maybeSingle(); // maybeSingle() est plus sûr que single() si aucun résultat n'est trouvé
-      
-      if (!error) {
-        setIsFollowing(!!data);
-      }
+        .eq('status', 'accepted')
+        .maybeSingle();
+
+      if (!error && active) setIsFollowing(Boolean(data));
     };
-    
+
     checkFollow();
 
-    // Écouter les changements en temps réel
-    const channel = supabase.channel(`follows:${targetUserId}`)
-      .on('postgres_changes', { 
-        event: '*', 
-        schema: 'public', 
-        table: 'follows', 
-        filter: `followed_id=eq.${targetUserId}` 
-      }, () => {
-        checkFollow(); // Rafraîchir l'état si quelqu'un s'abonne/se désabonne
-      })
+    const channel = supabase
+      .channel(`follow-status:${currentUserId}:${targetUserId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'follows',
+          filter: `follower_id=eq.${currentUserId}`,
+        },
+        (payload) => {
+          const row = payload.new || payload.old;
+          if (row?.followed_id === targetUserId) checkFollow();
+        }
+      )
       .subscribe();
 
     return () => {
+      active = false;
       supabase.removeChannel(channel);
     };
   }, [currentUserId, targetUserId]);
 
   const handleToggle = async () => {
+    if (!currentUserId || !targetUserId || currentUserId === targetUserId || loading) return;
     setLoading(true);
+
     try {
-      if (isFollowing) {
-        const { error } = await supabase
-          .from('follows')
-          .delete()
-          .eq('follower_id', currentUserId)
-          .eq('followed_id', targetUserId);
-        
-        if (!error) {
-          setIsFollowing(false);
-          showToast('Désabonné', 'info');
-        }
-      } else {
-        const { error } = await supabase
-          .from('follows')
-          .insert({ 
-            follower_id: currentUserId, 
-            followed_id: targetUserId 
-          });
-        
-        if (!error) {
-          setIsFollowing(true);
-          showToast('Abonnement réussi !', 'success');
-        }
-      }
+      const { data, error } = await supabase.rpc('toggle_follow', {
+        p_target: targetUserId,
+      });
+
+      if (error) throw error;
+
+      const following = Boolean(data);
+      setIsFollowing(following);
+      showToast(following ? 'Abonnement réussi !' : 'Désabonné', following ? 'success' : 'info');
     } catch (error) {
       console.error('Erreur follow:', error);
-      showToast('Erreur lors de l\'action', 'error');
+      showToast("Erreur lors de l'abonnement", 'error');
     } finally {
       setLoading(false);
     }
   };
 
-  // Ne pas afficher le bouton si l'utilisateur regarde son propre profil
   if (currentUserId === targetUserId) return null;
 
   return (
@@ -86,8 +77,8 @@ export default function FollowButton({ targetUserId, currentUserId }) {
       onClick={handleToggle}
       disabled={loading}
       className={`px-4 py-2 rounded-full font-medium transition-all duration-200 flex items-center gap-2 ${
-        isFollowing 
-          ? 'bg-gray-200 text-gray-800 hover:bg-red-100 hover:text-red-600' 
+        isFollowing
+          ? 'bg-gray-200 text-gray-800 hover:bg-red-100 hover:text-red-600'
           : 'bg-blue-600 text-white hover:bg-blue-700'
       } ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
     >
