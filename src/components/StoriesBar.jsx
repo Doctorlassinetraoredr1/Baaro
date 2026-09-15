@@ -30,9 +30,9 @@ export function StoriesBar({ onOpenStory, onCreateStory, refreshKey = 0 }) {
     if (ids.length) {
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("user_id,display_name,handle,flag,avatar_url")
-        .in("user_id", ids);
-      (profiles || []).forEach((p) => { profileMap[p.user_id] = p; });
+        .select("id,display_name,handle,flag,avatar_url")
+        .in("id", ids);
+      (profiles || []).forEach((p) => { profileMap[p.id] = p; });
     }
 
     const map = {};

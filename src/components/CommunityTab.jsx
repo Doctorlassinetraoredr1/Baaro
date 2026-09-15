@@ -138,10 +138,10 @@ export default function CommunityTab({ userId }) {
             <div>
               <input value={search} onChange={e=>{setSearch(e.target.value); loadUsers(e.target.value)}} placeholder="Chercher" className="w-full bg-black/50 px-3 py-2 rounded-full text-xs mb-3" />
               {allUsers.map(u => (
-                <div key={u.user_id} className="flex items-center gap-2 py-1.5 text-sm">
+                <div key={u.id} className="flex items-center gap-2 py-1.5 text-sm">
                   <img src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${u.display_name || u.handle}`} className="w-7 h-7 rounded-full" />
                   <div className="flex-1"><div>{u.display_name || u.handle || 'Membre'}</div><div className="text-[10px] text-white/40">{u.country||'Mali'}</div></div>
-                  {u.user_id !== userId && <FollowButton targetUserId={u.user_id} currentUserId={userId} />}
+                  {u.id !== userId && <FollowButton targetUserId={u.id} currentUserId={userId} />}
                 </div>
               ))}
             </div>

@@ -25,11 +25,11 @@ export default function ProfilePhotosEditor({ userId, profile, onUpdated }) {
       .from("profiles")
       .upsert(
         {
-          user_id: userId,
+          id: userId,
           ...patch,
           updated_at: new Date().toISOString(),
         },
-        { onConflict: "user_id" }
+        { onConflict: "id" }
       );
     if (error) throw error;
     onUpdated?.(patch);

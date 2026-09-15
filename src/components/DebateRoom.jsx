@@ -300,10 +300,10 @@ export function DebateRoom({
             if (missing.length > 0) {
               const { data: profiles } = await supabase
                 .from("profiles")
-                .select("user_id, display_name, avatar_url, flag")
-                .in("user_id", missing);
+                .select("id, display_name, avatar_url, flag")
+                .in("id", missing);
               (profiles || []).forEach((p) => {
-                profilesMap[p.user_id] = p;
+                profilesMap[p.id] = p;
               });
               profilesCache.current = profilesMap;
             }
@@ -372,7 +372,7 @@ export function DebateRoom({
                   const { data } = await supabase
                     .from("profiles")
                     .select("display_name, avatar_url, flag")
-                    .eq("user_id", payload.new.sender_id)
+                    .eq("id", payload.new.sender_id)
                     .maybeSingle();
                   profile = data || { display_name: "Membre", flag: "🌍" };
                   profilesCache.current[payload.new.sender_id] = profile;

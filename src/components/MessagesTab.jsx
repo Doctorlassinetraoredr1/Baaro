@@ -88,10 +88,10 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
     if (missing.length === 0) return profilesCache.current;
     const { data } = await supabase
       .from("profiles")
-      .select("user_id, display_name, handle, avatar_url, flag")
-      .in("user_id", missing);
+      .select("id, display_name, handle, avatar_url, flag")
+      .in("id", missing);
     (data || []).forEach((p) => {
-      profilesCache.current[p.user_id] = p;
+      profilesCache.current[p.id] = p;
     });
     return profilesCache.current;
   }, []);
@@ -291,7 +291,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
         ids.map((id) => {
           const p = profilesCache.current[id] || {};
           return {
-            user_id: id,
+            id,
             display_name: p.display_name || "Membre",
             handle: p.handle || `@user_${String(id).slice(0, 8)}`,
             avatar_url: p.avatar_url,
@@ -326,9 +326,9 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
         const pattern = `%${q}%`;
         const { data, error } = await supabase
           .from("profiles")
-          .select("user_id, display_name, handle, avatar_url, flag")
+          .select("id, display_name, handle, avatar_url, flag")
           .or(`display_name.ilike.${pattern},handle.ilike.${pattern}`)
-          .neq("user_id", currentUserId)
+          .neq("id", currentUserId)
           .limit(25);
         if (error) throw error;
         setSearchResults(data || []);
@@ -762,11 +762,11 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
 
   const renderUserRow = (user, badge) => (
     <button
-      key={user.user_id}
+      key={user.id}
       type="button"
       onClick={() =>
         createOrOpenConversation(
-          user.user_id,
+          user.id,
           user.display_name,
           user.avatar_url,
           user.flag

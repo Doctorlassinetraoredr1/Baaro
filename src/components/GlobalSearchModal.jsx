@@ -41,7 +41,7 @@ export function GlobalSearchModal({ isOpen, onClose, onSelectUser, onSelectDebat
         try {
           const { data, error } = await supabase
             .from('profiles')
-            .select('user_id, display_name, handle, flag, country, avatar_url, bio, points, is_verified')
+            .select('id, display_name, handle, flag, country, avatar_url, bio, points, is_verified')
             .or(`display_name.ilike.${searchQuery},handle.ilike.${searchQuery},country.ilike.${searchQuery}`)
             .limit(10);
           if (!error) profileUsers = data || [];
@@ -77,7 +77,7 @@ export function GlobalSearchModal({ isOpen, onClose, onSelectUser, onSelectDebat
 
         // Fonction pour ajouter un utilisateur sans créer de doublon
         const addUserSafely = (u) => {
-          const uid = u.user_id || u.id; // Priorité à user_id si existe (cas de profiles)
+          const uid = u.id;
           if (uid && !seenIds.has(uid)) {
             seenIds.add(uid);
             finalUsers.push({
