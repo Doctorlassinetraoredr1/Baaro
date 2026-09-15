@@ -1,24 +1,6 @@
-/**
- * Utilitaires nom d'utilisateur BAARO
- * Place : src/lib/username.js
- */
-
 const RESERVED = new Set([
-  "membre",
-  "member",
-  "user",
-  "admin",
-  "baaro",
-  "support",
-  "null",
-  "undefined",
-  "me",
-  "profil",
-  "profile",
-  "settings",
-  "api",
-  "www",
-  "help",
+  "membre", "member", "user", "admin", "baaro", "support",
+  "null", "undefined", "me", "profil", "profile", "settings", "api", "www", "help"
 ]);
 
 export function slugifyUsername(input) {
@@ -79,27 +61,15 @@ export function suggestHandle(displayName, attempt = 0) {
   return `@${base.slice(0, Math.max(1, 30 - suffix.length))}${suffix}`;
 }
 
-/**
- * @returns {{ ok: true, handle: string } | { ok: false, handle: string, reason: string, suggestion?: string }}
- */
 export async function checkHandleAvailable(supabase, handle, userId = null) {
   const normalized = normalizeHandle(handle, "");
   const core = normalized.replace(/^@/, "");
 
   if (core.length < 3) {
-    return {
-      ok: false,
-      handle: normalized,
-      reason: "L'identifiant doit faire au moins 3 caractères.",
-    };
+    return { ok: false, handle: normalized, reason: "L'identifiant doit faire au moins 3 caractères." };
   }
   if (RESERVED.has(core)) {
-    return {
-      ok: false,
-      handle: normalized,
-      reason: "Cet identifiant est réservé.",
-      suggestion: suggestHandle(`${core}_ok`, 1),
-    };
+    return { ok: false, handle: normalized, reason: "Cet identifiant est réservé.", suggestion: suggestHandle(`${core}_ok`, 1) };
   }
 
   const { data, error } = await supabase
@@ -109,34 +79,19 @@ export async function checkHandleAvailable(supabase, handle, userId = null) {
     .maybeSingle();
 
   if (error && error.code !== "PGRST116") {
-    return {
-      ok: false,
-      handle: normalized,
-      reason: "Impossible de vérifier l'identifiant. Réessaie.",
-    };
+    return { ok: false, handle: normalized, reason: "Impossible de vérifier l'identifiant. Réessaie." };
   }
 
   if (data && data.id !== userId) {
     const baseName = core.replace(/\d+$/, "") || core;
     const candidate = suggestHandle(baseName, Math.floor(Math.random() * 90) + 10);
-    
-    return {
-      ok: false,
-      handle: normalized,
-      reason: `L'identifiant ${normalized} est déjà pris.`,
-      suggestion: candidate,
-    };
+    return { ok: false, handle: normalized, reason: `L'identifiant ${normalized} est déjà pris.`, suggestion: candidate };
   }
 
   return { ok: true, handle: normalized };
 }
 
-export async function resolveUniqueHandle(
-  supabase,
-  rawHandle,
-  displayName,
-  userId
-) {
+export async function resolveUniqueHandle(supabase, rawHandle, displayName, userId) {
   const requested = String(rawHandle || "").trim();
   let candidate = normalizeHandle(requested, displayName);
   const first = await checkHandleAvailable(supabase, candidate, userId);
@@ -180,11 +135,7 @@ export async function resolveUniqueHandle(
     }
   }
 
-  return {
-    handle: `@baaro_${Math.random().toString(36).slice(2, 8)}`,
-    conflict: true,
-    message: `${candidate} n'est pas disponible.`,
-  };
+  return { handle: `@baaro_${Math.random().toString(36).slice(2, 8)}`, conflict: true, message: `${candidate} n'est pas disponible.` };
 }
 
 export function isHandleUniqueViolation(error) {
