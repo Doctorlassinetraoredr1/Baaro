@@ -4,7 +4,7 @@ import path from "node:path";
 const root=process.cwd();
 const required=[
   "package.json","vite.config.js","capacitor.config.json",
-  "docs-BAARO-v19-SECURITY.md","scripts/security-audit-scan.mjs"
+  "docs/SECURITY.md","scripts/security-audit-scan.mjs"
 ];
 let bad=0;
 for(const f of required){
