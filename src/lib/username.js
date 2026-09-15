@@ -50,8 +50,9 @@ export function normalizeHandle(raw, fallbackDisplayName = "") {
     .slice(0, 30);
 
   if (!core || core.length < 3 || RESERVED.has(core)) {
-    core = slugifyUsername(fallbackDisplayName);
-    if (core.length < 3) {
+    const fallback = slugifyUsername(fallbackDisplayName);
+    core = fallback && !RESERVED.has(fallback) ? fallback : "baaro_ok2";
+    if (core.length < 3 || RESERVED.has(core)) {
       core = `baaro_${Math.random().toString(36).slice(2, 6)}`;
     }
   }
@@ -147,42 +148,56 @@ export async function resolveUniqueHandle(
   displayName,
   userId
 ) {
-  let candidate = normalizeHandle(rawHandle, displayName);
+  const requested = String(rawHandle || "").trim();
+  let candidate = normalizeHandle(requested, displayName);
   const first = await checkHandleAvailable(supabase, candidate, userId);
 
-  if (first.ok) {
-    return { handle: first.handle, conflict: false };
-  }
+  if (first.ok) return { handle: first.handle, conflict: false };
 
-  if (!first.suggestion && first.reason?.includes("caractères")) {
-    return {
-      handle: candidate,
-      conflict: true,
-      message: first.reason,
-    };
-  }
-
+  // A reserved handle must never abort an otherwise valid profile save.
+  // Generate a safe candidate and continue checking it against the database.
   const base = slugifyUsername(displayName || candidate.replace(/^@/, ""));
-  for (let attempt = 1; attempt <= 15; attempt++) {
-    const tryHandle =
-      first.suggestion && attempt === 1
-        ? first.suggestion
-        : suggestHandle(base, attempt);
+  const candidates = [];
+  if (first.suggestion) candidates.push(first.suggestion);
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    candidates.push(suggestHandle(base, attempt));
+  }
+  candidates.push(`@baaro_${Math.random().toString(36).slice(2, 8)}`);
+
+  for (const tryHandle of candidates) {
     const check = await checkHandleAvailable(supabase, tryHandle, userId);
     if (check.ok) {
       return {
         handle: check.handle,
         conflict: true,
-        message: `${candidate} était pris — identifiant attribué : ${check.handle}`,
+        message: `${candidate} n'est pas disponible — identifiant utilisé : ${check.handle}`,
       };
     }
   }
 
-  const fallback = `@${base.slice(0, 20)}_${Math.random().toString(36).slice(2, 6)}`;
+  // Last resort: keep the user's current valid handle when available.
+  if (userId) {
+    const { data: current } = await supabase
+      .from("profiles")
+      .select("handle")
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (current?.handle) {
+      const currentCheck = await checkHandleAvailable(supabase, current.handle, userId);
+      if (currentCheck.ok) {
+        return {
+          handle: current.handle,
+          conflict: true,
+          message: `${candidate} n'est pas disponible — identifiant actuel conservé : ${current.handle}`,
+        };
+      }
+    }
+  }
+
   return {
-    handle: fallback,
+    handle: `@baaro_${Math.random().toString(36).slice(2, 8)}`,
     conflict: true,
-    message: `${candidate} était pris — identifiant attribué : ${fallback}`,
+    message: `${candidate} n'est pas disponible.`,
   };
 }
 
