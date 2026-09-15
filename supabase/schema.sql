@@ -1,4 +1,6 @@
--- Schéma BAARO pour Supabase. À coller dans SQL Editor puis "Run".
+-- Schéma BAARO pour Supabase (idempotent).
+-- Identité unique : profiles.id / wallets.id / crypto_holdings.id = auth.users.id
+-- Peut être relancé sans erreur "policy already exists".
 
 create table if not exists wallets (
   id uuid primary key references auth.users(id) on delete cascade,
@@ -37,6 +39,10 @@ create table if not exists messages (
   sender_id uuid not null references auth.users(id) on delete cascade, recipient_id uuid not null references auth.users(id) on delete cascade,
   text text not null, created_at timestamptz not null default now()
 );
+create table if not exists votes (
+  proposal_id text not null, user_id uuid not null references auth.users(id) on delete cascade,
+  choice text not null, created_at timestamptz not null default now(), primary key (proposal_id, user_id)
+);
 
 alter table wallets enable row level security;
 alter table transactions enable row level security;
@@ -47,34 +53,50 @@ alter table post_likes enable row level security;
 alter table videos enable row level security;
 alter table follows enable row level security;
 alter table messages enable row level security;
-
-create policy "wallet_own" on wallets for all using (auth.uid() = id) with check (auth.uid() = id);
-create policy "tx_own" on transactions for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "crypto_own" on crypto_holdings for all using (auth.uid() = id) with check (auth.uid() = id);
-
-create policy "profiles_read" on profiles for select using (true);
-create policy "profiles_insert" on profiles for insert with check (auth.uid() = id);
-create policy "profiles_update" on profiles for update using (auth.uid() = id);
-
-create policy "posts_read" on posts for select using (true);
-create policy "posts_insert" on posts for insert with check (auth.uid() = author_id);
-
-create policy "likes_read" on post_likes for select using (true);
-create policy "likes_own" on post_likes for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-
-create policy "videos_read" on videos for select using (true);
-create policy "videos_insert" on videos for insert with check (auth.uid() = author_id);
-
-create policy "follows_read" on follows for select using (true);
-create policy "follows_own" on follows for all using (auth.uid() = follower_id) with check (auth.uid() = follower_id);
-
-create table if not exists votes (
-  proposal_id text not null, user_id uuid not null references auth.users(id) on delete cascade,
-  choice text not null, created_at timestamptz not null default now(), primary key (proposal_id, user_id)
-);
 alter table votes enable row level security;
-create policy "votes_read" on votes for select using (true);
-create policy "votes_own" on votes for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
-create policy "messages_read" on messages for select using (auth.uid() = sender_id or auth.uid() = recipient_id);
-create policy "messages_insert" on messages for insert with check (auth.uid() = sender_id);
+-- Drop avant create (évite ERROR 42710 policy already exists)
+DROP POLICY IF EXISTS "wallet_own" ON wallets;
+DROP POLICY IF EXISTS "tx_own" ON transactions;
+DROP POLICY IF EXISTS "crypto_own" ON crypto_holdings;
+DROP POLICY IF EXISTS "profiles_read" ON profiles;
+DROP POLICY IF EXISTS "profiles_insert" ON profiles;
+DROP POLICY IF EXISTS "profiles_update" ON profiles;
+DROP POLICY IF EXISTS "posts_read" ON posts;
+DROP POLICY IF EXISTS "posts_insert" ON posts;
+DROP POLICY IF EXISTS "likes_read" ON post_likes;
+DROP POLICY IF EXISTS "likes_own" ON post_likes;
+DROP POLICY IF EXISTS "videos_read" ON videos;
+DROP POLICY IF EXISTS "videos_insert" ON videos;
+DROP POLICY IF EXISTS "follows_read" ON follows;
+DROP POLICY IF EXISTS "follows_own" ON follows;
+DROP POLICY IF EXISTS "votes_read" ON votes;
+DROP POLICY IF EXISTS "votes_own" ON votes;
+DROP POLICY IF EXISTS "messages_read" ON messages;
+DROP POLICY IF EXISTS "messages_insert" ON messages;
+
+CREATE POLICY "wallet_own" ON wallets FOR ALL USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+CREATE POLICY "tx_own" ON transactions FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "crypto_own" ON crypto_holdings FOR ALL USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "profiles_read" ON profiles FOR SELECT USING (true);
+CREATE POLICY "profiles_insert" ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "profiles_update" ON profiles FOR UPDATE USING (auth.uid() = id);
+
+CREATE POLICY "posts_read" ON posts FOR SELECT USING (true);
+CREATE POLICY "posts_insert" ON posts FOR INSERT WITH CHECK (auth.uid() = author_id);
+
+CREATE POLICY "likes_read" ON post_likes FOR SELECT USING (true);
+CREATE POLICY "likes_own" ON post_likes FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "videos_read" ON videos FOR SELECT USING (true);
+CREATE POLICY "videos_insert" ON videos FOR INSERT WITH CHECK (auth.uid() = author_id);
+
+CREATE POLICY "follows_read" ON follows FOR SELECT USING (true);
+CREATE POLICY "follows_own" ON follows FOR ALL USING (auth.uid() = follower_id) WITH CHECK (auth.uid() = follower_id);
+
+CREATE POLICY "votes_read" ON votes FOR SELECT USING (true);
+CREATE POLICY "votes_own" ON votes FOR ALL USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "messages_read" ON messages FOR SELECT USING (auth.uid() = sender_id OR auth.uid() = recipient_id);
+CREATE POLICY "messages_insert" ON messages FOR INSERT WITH CHECK (auth.uid() = sender_id);
