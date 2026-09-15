@@ -1,7 +1,7 @@
 import React from "react";
 import { useApp } from "../../contexts/AppContext";
 
-export const AuthScreen = ({ onNavigate }) => {
+const AuthScreen = ({ onNavigate }) => {
   const { enableGuestMode } = useApp();
 
   const handleGuestContinue = () => {
@@ -26,3 +26,5 @@ export const AuthScreen = ({ onNavigate }) => {
     </div>
   );
 };
+
+export default AuthScreen;
