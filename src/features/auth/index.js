@@ -1,1 +1,1 @@
-export { AuthScreen } from "./AuthScreen.jsx";
+export { default } from "./AuthScreen.jsx";
