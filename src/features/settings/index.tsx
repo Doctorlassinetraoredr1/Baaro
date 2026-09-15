@@ -982,7 +982,6 @@ export default function SettingsTab({
           setEditBirthDate(profile.birth_date || "");
           setEditLocation(profile.location || "");
           setEditCountry(profile.country || profile.registered_country || "");
-          setEditHandle(displayHandle(profile.handle, profile.display_name || "Membre"));
           setEditFlag(profile.flag || "🌍");
           setEditBio(profile.bio || "");
         }
@@ -1106,20 +1105,27 @@ export default function SettingsTab({
       const derivedFlag = selectedProfileCountry?.flag || "🌍";
       setEditFlag(derivedFlag);
 
-      const { error } = await supabase
+      const profilePayload = {
+        user_id: user.id,
+        display_name: name,
+        first_name: editFirstName.trim(),
+        last_name: editLastName.trim(),
+        birth_date: editBirthDate || null,
+        location: editLocation.trim(),
+        country: editCountry || null,
+        handle: finalHandle,
+        flag: derivedFlag,
+        bio: editBio.trim(),
+        updated_at: new Date().toISOString(),
+      };
+
+      // UPSERT est volontaire : certains anciens comptes n'ont pas encore
+      // de ligne dans public.profiles. Un simple UPDATE ne crée rien.
+      let { error } = await supabase
         .from("profiles")
-        .upsert({
-          display_name: name,
-          first_name: editFirstName.trim(),
-          last_name: editLastName.trim(),
-          birth_date: editBirthDate || null,
-          location: editLocation.trim(),
-          country: editCountry || null,
-          handle: finalHandle,
-          flag: derivedFlag,
-          bio: editBio.trim(),
-          updated_at: new Date().toISOString(),
-        }, { onConflict: "user_id" });
+        .upsert(profilePayload, { onConflict: "user_id" })
+        .select("user_id")
+        .single();
 
       if (error) {
         if (isHandleUniqueViolation(error)) {
@@ -1131,18 +1137,9 @@ export default function SettingsTab({
           );
           const { error: err2 } = await supabase
             .from("profiles")
-            .upsert({
-              display_name: name,
-              first_name: editFirstName.trim(),
-              last_name: editLastName.trim(),
-              birth_date: editBirthDate || null,
-              location: editLocation.trim(),
-              country: editCountry || null,
-              handle: resolved.handle,
-              flag: derivedFlag,
-              bio: editBio.trim(),
-              updated_at: new Date().toISOString(),
-            }, { onConflict: "user_id" });
+            .upsert({ ...profilePayload, handle: resolved.handle }, { onConflict: "user_id" })
+            .select("user_id")
+            .single();
           if (err2) throw err2;
           finalHandle = resolved.handle;
           conflictNote = `Identifiant déjà pris — attribué : ${finalHandle}`;
