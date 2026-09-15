@@ -1,104 +1,72 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../../supabaseClient.js';
-import { useToast } from '../../components/ToastContext.jsx';
+import React, { useState, useEffect } from 'react';
+import { useApp } from '../../contexts/AppContext';
+import { supabase } from '../../lib/supabaseClient';
 
-export default function FollowButton({ targetUserId, currentUserId }) {
+export const FollowButton = ({ targetUserId, onRequireAuth }) => {
+  const { user, isGuest } = useApp();
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { showToast } = useToast();
 
   useEffect(() => {
-    let active = true;
-    if (!currentUserId || !targetUserId || currentUserId === targetUserId) return undefined;
+    if (!user || isGuest || !targetUserId) return;
 
-    const checkFollow = async () => {
+    const checkFollowStatus = async () => {
       const { data, error } = await supabase
         .from('follows')
-        .select('id')
-        .eq('follower_id', currentUserId)
-        .eq('followed_id', targetUserId)
-        .eq('status', 'accepted')
+        .select('*')
+        .eq('follower_id', user.id)
+        .eq('following_id', targetUserId)
         .maybeSingle();
 
-      if (!error && active) setIsFollowing(Boolean(data));
+      if (!error && data) {
+        setIsFollowing(true);
+      }
     };
 
-    checkFollow();
+    checkFollowStatus();
+  }, [user, isGuest, targetUserId]);
 
-    const channel = supabase
-      .channel(`follow-status:${currentUserId}:${targetUserId}`)
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'follows',
-          filter: `follower_id=eq.${currentUserId}`,
-        },
-        (payload) => {
-          const row = payload.new || payload.old;
-          if (row?.followed_id === targetUserId) checkFollow();
-        }
-      )
-      .subscribe();
+  const handleFollowToggle = async (e) => {
+    e.stopPropagation();
 
-    return () => {
-      active = false;
-      supabase.removeChannel(channel);
-    };
-  }, [currentUserId, targetUserId]);
+    if (isGuest || !user) {
+      if (onRequireAuth) onRequireAuth();
+      return;
+    }
 
-  const handleToggle = async () => {
-    if (!currentUserId || !targetUserId || currentUserId === targetUserId || loading) return;
+    const previousState = isFollowing;
+    setIsFollowing(!previousState);
     setLoading(true);
 
     try {
-      const { data, error } = await supabase.rpc('toggle_follow', {
-        p_target: targetUserId,
-      });
-
-      if (error) throw error;
-
-      const following = Boolean(data);
-      setIsFollowing(following);
-      showToast(following ? 'Abonnement réussi !' : 'Désabonné', following ? 'success' : 'info');
-    } catch (error) {
-      console.error('Erreur follow:', error);
-      showToast("Erreur lors de l'abonnement", 'error');
+      if (previousState) {
+        const { error } = await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', user.id)
+          .eq('following_id', targetUserId);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase
+          .from('follows')
+          .insert([{ follower_id: user.id, following_id: targetUserId }]);
+        if (error) throw error;
+      }
+    } catch (err) {
+      console.error("Erreur lors de la mise à jour de l'abonnement:", err);
+      setIsFollowing(previousState);
     } finally {
       setLoading(false);
     }
   };
 
-  if (currentUserId === targetUserId) return null;
-
   return (
-    <button
-      onClick={handleToggle}
+    <button 
+      onClick={handleFollowToggle} 
       disabled={loading}
-      className={`px-4 py-2 rounded-full font-medium transition-all duration-200 flex items-center gap-2 ${
-        isFollowing
-          ? 'bg-gray-200 text-gray-800 hover:bg-red-100 hover:text-red-600'
-          : 'bg-blue-600 text-white hover:bg-blue-700'
-      } ${loading ? 'opacity-70 cursor-not-allowed' : ''}`}
+      className={`btn-follow ${isFollowing ? 'following' : ''}`}
     >
-      {loading ? (
-        <span className="animate-pulse">...</span>
-      ) : isFollowing ? (
-        <>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-          </svg>
-          Abonné
-        </>
-      ) : (
-        <>
-          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
-          S'abonner
-        </>
-      )}
+      {isFollowing ? 'Abonné(e)' : 'S\'abonner'}
     </button>
   );
-}
+};
