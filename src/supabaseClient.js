@@ -18,204 +18,170 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   },
 });
 
+// ========== IDENTITÉ UTILISATEUR UNIQUE ==========
+// Règle BAARO : l'identité utilisateur est TOUJOURS auth.users.id.
+// profiles.user_id, wallets.user_id, follows.*_id et les autres FK utilisateur
+// référencent ce même UUID. Aucun wallet_id ou identifiant utilisateur parallèle.
+
+const getCurrentUserId = async () => {
+  const { data: { user }, error } = await supabase.auth.getUser();
+  if (error) throw error;
+  if (!user?.id) throw new Error("Non connecté");
+  return user.id;
+};
+
 // ========== ABONNÉS / ABONNEMENTS / AMIS ==========
 
-// Suivre un utilisateur
-export const followUser = async (followingId) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Non connecté");
-
-  const { data, error } = await supabase
-    .from("follows")
-    .insert({
-      follower_id: user.id,
-      followed_id: followingId,
-      status: "accepted",
-      is_friend: false,
-    });
-
+export const followUser = async (targetUserId) => {
+  const userId = await getCurrentUserId();
+  if (!targetUserId || targetUserId === userId) throw new Error("Utilisateur cible invalide");
+  const { data, error } = await supabase.rpc("toggle_follow", { p_target: targetUserId });
   return { data, error };
 };
 
-// Se désabonner
-export const unfollowUser = async (followingId) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Non connecté");
-
+export const unfollowUser = async (targetUserId) => {
+  const userId = await getCurrentUserId();
+  if (!targetUserId || targetUserId === userId) throw new Error("Utilisateur cible invalide");
   const { error } = await supabase
     .from("follows")
     .delete()
-    .eq("follower_id", user.id)
-    .eq("followed_id", followingId);
-
+    .eq("follower_id", userId)
+    .eq("followed_id", targetUserId);
   return { error };
 };
 
-// Vérifier si je suis abonné
-export const isFollowing = async (userId) => {
+export const isFollowing = async (targetUserId) => {
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return false;
-
-  const { count } = await supabase
+  if (!user?.id || !targetUserId || user.id === targetUserId) return false;
+  const { data } = await supabase
     .from("follows")
-    .select("*", { count: "exact", head: true })
+    .select("follower_id")
     .eq("follower_id", user.id)
-    .eq("followed_id", userId)
-    .eq("status", "accepted");
-
-  return (count || 0) > 0;
-};
-
-// Demander en ami
-export const sendFriendRequest = async (targetUserId) => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error("Non connecté");
-
-  // Vérifie s'il existe déjà une relation dans l'autre sens
-  const { data: existing } = await supabase
-    .from("follows")
-    .select("id, status")
-    .eq("follower_id", targetUserId)
-    .eq("followed_id", user.id)
+    .eq("followed_id", targetUserId)
+    .eq("status", "accepted")
     .maybeSingle();
+  return Boolean(data);
+};
 
-  if (existing) {
-    const { data, error } = await supabase
-      .from("follows")
-      .update({ is_friend: true, status: "pending" })
-      .eq("id", existing.id)
-      .select()
-      .single();
-    return { data, error };
-  }
+export const sendFriendRequest = async (targetUserId) => {
+  const userId = await getCurrentUserId();
+  if (!targetUserId || targetUserId === userId) throw new Error("Utilisateur cible invalide");
 
-  // Sinon on crée une nouvelle demande
+  const { data: existing, error: existingError } = await supabase
+    .from("follows")
+    .select("follower_id, followed_id, status, is_friend")
+    .eq("follower_id", userId)
+    .eq("followed_id", targetUserId)
+    .maybeSingle();
+  if (existingError) throw existingError;
+
+  if (existing?.is_friend && existing.status === "accepted") return { data: existing, error: null };
+
   const { data, error } = await supabase
     .from("follows")
-    .insert({
-      follower_id: user.id,
-      followed_id: targetUserId,
-      status: "pending",
-      is_friend: true,
-    })
-    .select()
+    .upsert(
+      { follower_id: userId, followed_id: targetUserId, status: "pending", is_friend: true },
+      { onConflict: "follower_id,followed_id" }
+    )
+    .select("follower_id, followed_id, status, is_friend, created_at")
     .single();
 
   return { data, error };
 };
 
-// Accepter une demande d'ami
-export const acceptFriendRequest = async (followId) => {
+export const acceptFriendRequest = async (followerId) => {
+  const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("follows")
-    .update({ status: "accepted" })
-    .eq("id", followId)
-    .select()
+    .update({ status: "accepted", is_friend: true })
+    .eq("follower_id", followerId)
+    .eq("followed_id", userId)
+    .eq("status", "pending")
+    .eq("is_friend", true)
+    .select("follower_id, followed_id, status, is_friend, created_at")
     .single();
-
   return { data, error };
 };
 
-// Refuser une demande d'ami
-export const rejectFriendRequest = async (followId) => {
+export const rejectFriendRequest = async (followerId) => {
+  const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("follows")
     .update({ status: "rejected", is_friend: false })
-    .eq("id", followId)
-    .select()
+    .eq("follower_id", followerId)
+    .eq("followed_id", userId)
+    .eq("status", "pending")
+    .eq("is_friend", true)
+    .select("follower_id, followed_id, status, is_friend")
     .single();
-
   return { data, error };
 };
 
 // ========== RÉCUPÉRATION ==========
 
-// Mes abonnements
 export const getFollowing = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { data: [] };
-
+  const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("follows")
     .select("followed_id")
-    .eq("follower_id", user.id)
+    .eq("follower_id", userId)
     .eq("status", "accepted");
-
-  return {
-    data: (data || []).map((f) => f.followed_id),
-    error,
-  };
+  return { data: (data || []).map((f) => f.followed_id), error };
 };
 
-// Mes abonnés
 export const getFollowers = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { data: [] };
-
+  const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("follows")
     .select("follower_id")
-    .eq("followed_id", user.id)
+    .eq("followed_id", userId)
     .eq("status", "accepted");
-
-  return {
-    data: (data || []).map((f) => f.follower_id),
-    error,
-  };
+  return { data: (data || []).map((f) => f.follower_id), error };
 };
 
-// Mes amis
 export const getFriends = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { data: [] };
-
+  const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("follows")
-    .select("followed_id")
-    .eq("follower_id", user.id)
+    .select("follower_id, followed_id")
     .eq("is_friend", true)
-    .eq("status", "accepted");
+    .eq("status", "accepted")
+    .or(`follower_id.eq.${userId},followed_id.eq.${userId}`);
 
-  return {
-    data: (data || []).map((f) => f.followed_id),
-    error,
-  };
+  const ids = (data || []).map((row) =>
+    row.follower_id === userId ? row.followed_id : row.follower_id
+  );
+  return { data: [...new Set(ids)], error };
 };
 
-// Demandes d'ami en attente (reçues)
 export const getPendingRequests = async () => {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { data: [] };
-
+  const userId = await getCurrentUserId();
   const { data, error } = await supabase
     .from("follows")
-    .select("id, follower_id")
-    .eq("followed_id", user.id)
+    .select("follower_id, followed_id, status, is_friend, created_at")
+    .eq("followed_id", userId)
     .eq("is_friend", true)
-    .eq("status", "pending");
-
+    .eq("status", "pending")
+    .order("created_at", { ascending: false });
   return { data: data || [], error };
 };
 
 // ========== PROFILS ==========
 
-// Récupérer tous les profils
 export const getAllUsers = async () => {
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
     .order("created_at", { ascending: false });
-
   return { data, error };
 };
 
-// Récupérer un profil par ID
 export const getUserById = async (userId) => {
+  if (!userId) return { data: null, error: new Error("user_id requis") };
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
     .eq("user_id", userId)
-    .single();
-
+    .maybeSingle();
   return { data, error };
 };
