@@ -26,7 +26,7 @@ export const AppProvider = ({ children }) => {
   };
 
   useEffect(() => {
-    // Vérification initiale de la session Supabase
+    // Vérification initiale de la session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUser(session.user);
@@ -40,8 +40,8 @@ export const AppProvider = ({ children }) => {
       setLoading(false);
     });
 
-    // Écouteur de changement d'état d'authentification
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
+    // Écouteur des changements d'authentification
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
         setIsGuest(false);
@@ -55,7 +55,7 @@ export const AppProvider = ({ children }) => {
     });
 
     return () => {
-      authListener?.subscription?.unsubscribe();
+      if (subscription) subscription.unsubscribe();
     };
   }, []);
 
