@@ -18,21 +18,28 @@ export default function AuthScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLogin, setIsLogin] = useState(true);
+
   const [loading, setLoading] = useState(false);
-  const [oauthLoading, setOauthLoading] =
-    useState(null);
+  const [oauthLoading, setOauthLoading] = useState(null);
   const [error, setError] = useState(null);
-  const [captchaToken, setCaptchaToken] =
-    useState(null);
-  const [pendingRef, setPendingRef] =
-    useState(null);
+
+  const [captchaToken, setCaptchaToken] = useState(null);
+  const [pendingRef, setPendingRef] = useState(null);
 
   useEffect(() => {
     captureRefFromUrl();
     setPendingRef(getPendingRef());
   }, []);
 
-  const handleAnonymous = async (token) => {
+  /**
+   * Connexion anonyme.
+   *
+   * IMPORTANT :
+   * La validation Turnstile ne lance plus automatiquement
+   * cette fonction. L'utilisateur doit cliquer explicitement
+   * sur le bouton d'accès invité.
+   */
+  const handleAnonymous = async () => {
     if (loading) return;
 
     setLoading(true);
@@ -40,7 +47,8 @@ export default function AuthScreen() {
 
     try {
       const useCaptcha =
-        token && token !== "dev-bypass";
+        captchaToken &&
+        captchaToken !== "dev-bypass";
 
       const {
         data,
@@ -49,7 +57,7 @@ export default function AuthScreen() {
         useCaptcha
           ? {
               options: {
-                captchaToken: token,
+                captchaToken,
               },
             }
           : undefined
@@ -60,26 +68,44 @@ export default function AuthScreen() {
       }
 
       if (!data?.session) {
-        throw new Error(
-          "Session non créée"
-        );
+        throw new Error("Session non créée");
       }
     } catch (err) {
-      console.error(err);
+      console.error(
+        "Erreur connexion anonyme :",
+        err
+      );
 
       setError(
-        err.message ||
-          "Impossible de se connecter. Vérifiez que l'authentification anonyme est activée dans Supabase."
+        err?.message ||
+          "Impossible de se connecter en mode invité. Vérifiez que l'authentification anonyme est activée dans Supabase."
       );
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Connexion ou inscription avec email.
+   */
   const handleEmailSubmit = async (event) => {
     event.preventDefault();
 
     if (loading) return;
+
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail) {
+      setError("Veuillez saisir votre email.");
+      return;
+    }
+
+    if (!password) {
+      setError(
+        "Veuillez saisir votre mot de passe."
+      );
+      return;
+    }
 
     setLoading(true);
     setError(null);
@@ -88,59 +114,77 @@ export default function AuthScreen() {
       if (isLogin) {
         const {
           error: authError,
-        } = await supabase.auth.signInWithPassword(
-          {
-            email: email.trim(),
-            password,
-          }
-        );
-
-        if (authError) {
-          throw authError;
-        }
-      } else {
-        const username =
-          email
-            .trim()
-            .split("@")[0]
-            .slice(0, 20);
-
-        const {
-          data,
-          error: authError,
-        } = await supabase.auth.signUp({
-          email: email.trim(),
+        } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
           password,
-          options: {
-            data: {
-              display_name: username,
-              handle: `@${username}`,
-            },
-          },
         });
 
         if (authError) {
           throw authError;
         }
 
-        // Si Supabase demande une confirmation email,
-        // la session peut être absente temporairement.
-        if (!data?.session) {
-          setError(
-            "Compte créé. Vérifiez votre email pour confirmer votre inscription."
-          );
-        }
+        return;
       }
-    } catch (err) {
+
+      const username = cleanEmail
+        .split("@")[0]
+        .replace(/[^a-zA-Z0-9_.-]/g, "")
+        .slice(0, 20);
+
+      const safeUsername =
+        username || "baaro_user";
+
+      const {
+        data,
+        error: authError,
+      } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          data: {
+            display_name: safeUsername,
+            handle: `@${safeUsername}`,
+          },
+        },
+      });
+
+      if (authError) {
+        throw authError;
+      }
+
+      /**
+       * Si la confirmation email est désactivée,
+       * Supabase crée généralement directement une session.
+       */
+      if (data?.session) {
+        return;
+      }
+
+      /**
+       * Si la confirmation email est activée,
+       * le compte existe mais aucune session n'est encore disponible.
+       */
       setError(
-        err.message ||
-          "Erreur d'authentification"
+        "Compte créé avec succès. Vérifiez votre email pour confirmer votre inscription."
+      );
+    } catch (err) {
+      console.error(
+        "Erreur authentification :",
+        err
+      );
+
+      setError(
+        err?.message ||
+          "Erreur d'authentification."
       );
     } finally {
       setLoading(false);
     }
   };
 
+  /**
+   * Connexion OAuth.
+   */
   const handleOAuth = async (provider) => {
     if (loading || oauthLoading) return;
 
@@ -153,8 +197,7 @@ export default function AuthScreen() {
       } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
-          redirectTo:
-            window.location.origin,
+          redirectTo: window.location.origin,
         },
       });
 
@@ -162,13 +205,58 @@ export default function AuthScreen() {
         throw authError;
       }
     } catch (err) {
+      console.error(
+        `Erreur OAuth ${provider} :`,
+        err
+      );
+
       setError(
-        err.message ||
-          "Erreur de connexion"
+        err?.message ||
+          "Erreur de connexion."
       );
 
       setOauthLoading(null);
     }
+  };
+
+  /**
+   * Mode email.
+   */
+  const openEmailMode = () => {
+    setMode("email");
+    setError(null);
+    setCaptchaToken(null);
+  };
+
+  /**
+   * Retour au mode principal.
+   */
+  const openAnonymousMode = () => {
+    setMode("anonymous");
+    setError(null);
+  };
+
+  /**
+   * Passage inscription <-> connexion.
+   */
+  const toggleAuthMode = () => {
+    setIsLogin((value) => !value);
+    setError(null);
+    setPassword("");
+  };
+
+  /**
+   * Mode invité explicite.
+   */
+  const handleGuestClick = () => {
+    if (!captchaToken) {
+      setError(
+        "Veuillez d'abord valider la vérification de sécurité."
+      );
+      return;
+    }
+
+    handleAnonymous();
   };
 
   return (
@@ -188,6 +276,7 @@ export default function AuthScreen() {
             "#D9AE52",
         }}
       >
+        {/* Logo / présentation */}
         <div className="text-center mb-6">
           <div
             className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center font-bold text-2xl shadow-lg"
@@ -236,6 +325,7 @@ export default function AuthScreen() {
           </p>
         </div>
 
+        {/* Fonctionnalités */}
         <div className="grid grid-cols-3 gap-2 mb-6">
           {[
             {
@@ -288,6 +378,7 @@ export default function AuthScreen() {
           )}
         </div>
 
+        {/* Parrainage */}
         {pendingRef && (
           <div
             className="mb-5 p-3 rounded-xl text-xs text-center border"
@@ -308,6 +399,9 @@ export default function AuthScreen() {
           </div>
         )}
 
+        {/* =====================================================
+            MODE PRINCIPAL
+        ====================================================== */}
         {mode === "anonymous" && (
           <div className="flex flex-col gap-5">
             <p
@@ -321,36 +415,37 @@ export default function AuthScreen() {
               Entre gratuitement
             </p>
 
+            {/* CAPTCHA
+                IMPORTANT : aucune connexion automatique ici.
+            */}
             <div className="flex justify-center">
               <TurnstileWidget
                 onVerify={(token) => {
-                  setCaptchaToken(token);
-
-                  if (token) {
-                    handleAnonymous(token);
-                  }
+                  setCaptchaToken(token || null);
+                  setError(null);
                 }}
               />
             </div>
 
-            {loading && (
-              <div
-                className="text-center text-sm flex items-center justify-center gap-2"
-                style={{
-                  color:
-                    COLORS.muted,
-                }}
-              >
-                <Sparkles
-                  size={14}
-                  style={{
-                    color:
-                      COLORS.gold,
-                  }}
-                />
-                Connexion en cours...
-              </div>
-            )}
+            {/* Bouton invité explicite */}
+            <button
+              type="button"
+              onClick={handleGuestClick}
+              disabled={
+                loading ||
+                !captchaToken
+              }
+              className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
+              style={{
+                background:
+                  "linear-gradient(135deg, #D9AE52 0%, #2DBFA6 100%)",
+                color: "#0B1220",
+              }}
+            >
+              {loading
+                ? "Connexion..."
+                : "Continuer en tant qu'invité"}
+            </button>
 
             {error && (
               <div className="text-center text-sm text-rose-400 bg-rose-500/10 rounded-xl p-3">
@@ -388,58 +483,48 @@ export default function AuthScreen() {
               />
             </div>
 
+            {/* Facebook */}
             <button
               type="button"
               onClick={() =>
-                handleOAuth(
-                  "facebook"
-                )
+                handleOAuth("facebook")
               }
-              disabled={
-                !!oauthLoading
-              }
+              disabled={!!oauthLoading}
               className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
               style={{
-                background:
-                  "#1877F2",
+                background: "#1877F2",
                 color: "#fff",
               }}
             >
-              {oauthLoading ===
-              "facebook"
+              {oauthLoading === "facebook"
                 ? "Connexion..."
                 : "Continuer avec Facebook"}
             </button>
 
+            {/* X */}
             <button
               type="button"
               onClick={() =>
                 handleOAuth("twitter")
               }
-              disabled={
-                !!oauthLoading
-              }
+              disabled={!!oauthLoading}
               className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
               style={{
-                background:
-                  "#000000",
+                background: "#000000",
                 color: "#fff",
                 border:
                   "1px solid #334155",
               }}
             >
-              {oauthLoading ===
-              "twitter"
+              {oauthLoading === "twitter"
                 ? "Connexion..."
                 : "Continuer avec X"}
             </button>
 
+            {/* Email */}
             <button
               type="button"
-              onClick={() => {
-                setMode("email");
-                setError(null);
-              }}
+              onClick={openEmailMode}
               className="text-sm text-center underline"
               style={{
                 color:
@@ -462,36 +547,45 @@ export default function AuthScreen() {
               découvrir BAARO en mode
               invité.
             </p>
-
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  localStorage.setItem(
-                    "baaro_is_guest",
-                    "true"
-                  );
-                } catch {}
-
-                window.location.reload();
-              }}
-              className="text-xs underline"
-              style={{
-                color:
-                  COLORS.muted,
-              }}
-            >
-              Continuer en tant
-              qu'invité
-            </button>
           </div>
         )}
 
+        {/* =====================================================
+            MODE EMAIL
+        ====================================================== */}
         {mode === "email" && (
           <form
             onSubmit={handleEmailSubmit}
             className="flex flex-col gap-4"
           >
+            <div className="text-center mb-1">
+              <h2
+                className="text-lg font-bold"
+                style={{
+                  color:
+                    COLORS.ivory ||
+                    "#f1f5f9",
+                }}
+              >
+                {isLogin
+                  ? "Connexion"
+                  : "Créer un compte"}
+              </h2>
+
+              <p
+                className="text-xs mt-1"
+                style={{
+                  color:
+                    COLORS.muted ||
+                    "#94a3b8",
+                }}
+              >
+                {isLogin
+                  ? "Connecte-toi à ton compte BAARO."
+                  : "Crée ton compte BAARO gratuitement."}
+              </p>
+            </div>
+
             <input
               type="email"
               placeholder="Email"
@@ -573,12 +667,7 @@ export default function AuthScreen() {
             >
               <button
                 type="button"
-                onClick={() => {
-                  setIsLogin(
-                    (value) => !value
-                  );
-                  setError(null);
-                }}
+                onClick={toggleAuthMode}
                 className="underline"
               >
                 {isLogin
@@ -588,12 +677,7 @@ export default function AuthScreen() {
 
               <button
                 type="button"
-                onClick={() => {
-                  setMode(
-                    "anonymous"
-                  );
-                  setError(null);
-                }}
+                onClick={openAnonymousMode}
                 className="underline"
               >
                 Retour
@@ -605,3 +689,18 @@ export default function AuthScreen() {
     </div>
   );
 }
+
+Le point essentiel corrigé est que :
+
+onVerify={(token) => {
+  setCaptchaToken(token || null);
+  setError(null);
+}}
+
+ne fait plus :
+
+handleAnonymous(token);
+
+Donc la validation du CAPTCHA ne peut plus envoyer automatiquement l'utilisateur vers l'application.
+
+Après cette correction, « Créer un compte » → formulaire d'inscription → clic sur « Créer un compte » restera le parcours normal.
