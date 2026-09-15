@@ -4,7 +4,9 @@ const MAX_ACCOUNTS_PER_DEVICE = 3;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    res.status(405).json({ error: "Méthode non autorisée" });
+    res.status(405).json({
+      error: "Méthode non autorisée",
+    });
     return;
   }
 
@@ -54,7 +56,7 @@ export default async function handler(req, res) {
      * Identité utilisateur unique :
      * user.id
      *
-     * device_id identifie l'appareil.
+     * device_id identifie uniquement l'appareil.
      */
     const { error: upsertError } = await admin
       .from("device_accounts")
@@ -82,12 +84,9 @@ export default async function handler(req, res) {
     }
 
     /*
-     * Compte le nombre de comptes associés à l'appareil.
+     * Compte les comptes associés à l'appareil.
      */
-    const {
-      count,
-      error: countError,
-    } = await admin
+    const { count, error: countError } = await admin
       .from("device_accounts")
       .select("id", {
         count: "exact",
@@ -145,42 +144,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-2. "supabase/migrations/013_device_accounts.sql"
-
-:::writing{variant="document" id="75294" title="supabase/migrations/013_device_accounts.sql"}
-
--- ============================================================
--- BAARO - Device Accounts
--- ============================================================
--- Identifiant utilisateur unique :
---     auth.users.id = profiles.id = device_accounts.id
---
--- device_id reste uniquement l'identifiant de l'appareil.
--- Aucun user_id n'est utilisé.
--- ============================================================
-
-create table if not exists public.device_accounts (
-  id uuid not null
-    references auth.users(id)
-    on delete cascade,
-
-  device_id text not null,
-
-  created_at timestamptz not null default now(),
-
-  primary key (device_id, id)
-);
-
--- Recherche rapide des comptes associés à un appareil.
-create index if not exists device_accounts_device_id_idx
-  on public.device_accounts (device_id);
-
--- Sécurité RLS.
-alter table public.device_accounts enable row level security;
-
--- Les écritures sont effectuées côté serveur par
--- /api/register-device avec le client administrateur.
--- Aucune politique publique n'est nécessaire.
-
-Important : cette migration corrige précisément le problème actuel : "/api/register-device" ne cherche plus "user_id" et la table nécessaire est créée avec "id" comme identifiant utilisateur unique.
