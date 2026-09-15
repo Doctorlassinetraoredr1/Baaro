@@ -1,21 +1,16 @@
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useState,
-} from "react";
-import { supabase } from "../supabaseClient";
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { supabase } from '../supabaseClient';
 
-const AppContext = createContext(null);
+const AppContext = createContext();
 
-const GUEST_KEY = "baaro_is_guest";
+const GUEST_KEY = 'baaro_is_guest';
 
 export const AppProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   const [isGuest, setIsGuest] = useState(() => {
     try {
-      return localStorage.getItem(GUEST_KEY) === "true";
+      return localStorage.getItem(GUEST_KEY) === 'true';
     } catch {
       return false;
     }
@@ -23,27 +18,18 @@ export const AppProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   const fetchUserProfile = async (id) => {
-    if (!id) {
-      setProfile(null);
-      return;
-    }
-
     try {
       const { data, error } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", id)
+        .from('profiles')
+        .select('*')
+        .eq('id', id)
         .single();
 
-      if (error) {
-        console.error("Erreur chargement profil :", error);
-        setProfile(null);
-        return;
-      }
+      if (error) throw error;
 
       setProfile(data);
-    } catch (error) {
-      console.error("Erreur chargement profil :", error);
+    } catch (err) {
+      console.error('Erreur chargement profil:', err);
       setProfile(null);
     }
   };
@@ -51,17 +37,9 @@ export const AppProvider = ({ children }) => {
   useEffect(() => {
     let mounted = true;
 
-    const initializeAuth = async () => {
-      try {
-        const {
-          data: { session },
-          error,
-        } = await supabase.auth.getSession();
-
-        if (error) {
-          console.error("Erreur récupération session :", error);
-        }
-
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
         if (!mounted) return;
 
         if (session?.user) {
@@ -69,17 +47,18 @@ export const AppProvider = ({ children }) => {
           setIsGuest(false);
 
           try {
-            localStorage.setItem(GUEST_KEY, "false");
+            localStorage.setItem(GUEST_KEY, 'false');
           } catch {
-            // localStorage indisponible : on continue normalement
+            // localStorage indisponible
           }
 
-          await fetchUserProfile(session.user.id);
+          fetchUserProfile(session.user.id);
         } else {
           let storedGuest = false;
 
           try {
-            storedGuest = localStorage.getItem(GUEST_KEY) === "true";
+            storedGuest =
+              localStorage.getItem(GUEST_KEY) === 'true';
           } catch {
             storedGuest = false;
           }
@@ -88,53 +67,45 @@ export const AppProvider = ({ children }) => {
           setUser(null);
           setProfile(null);
         }
-      } catch (error) {
-        console.error("Erreur initialisation authentification :", error);
-      } finally {
+
+        setLoading(false);
+      })
+      .catch((error) => {
+        console.error(
+          'Erreur récupération session:',
+          error
+        );
+
         if (mounted) {
           setLoading(false);
         }
-      }
-    };
-
-    initializeAuth();
+      });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
+    } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
 
-      if (session?.user) {
-        setUser(session.user);
-        setIsGuest(false);
+        if (session?.user) {
+          setUser(session.user);
+          setIsGuest(false);
 
-        try {
-          localStorage.setItem(GUEST_KEY, "false");
-        } catch {
-          // localStorage indisponible : on continue normalement
+          try {
+            localStorage.setItem(GUEST_KEY, 'false');
+          } catch {
+            // localStorage indisponible
+          }
+
+          await fetchUserProfile(session.user.id);
+        } else if (event === 'SIGNED_OUT') {
+          setUser(null);
+          setProfile(null);
         }
 
-        await fetchUserProfile(session.user.id);
-      } else if (
-        event === "SIGNED_OUT" ||
-        event === "INITIAL_SESSION"
-      ) {
-        setUser(null);
-        setProfile(null);
-
-        let storedGuest = false;
-
-        try {
-          storedGuest = localStorage.getItem(GUEST_KEY) === "true";
-        } catch {
-          storedGuest = false;
-        }
-
-        setIsGuest(storedGuest);
+        setLoading(false);
       }
-
-      setLoading(false);
-    });
+    );
 
     return () => {
       mounted = false;
@@ -142,17 +113,11 @@ export const AppProvider = ({ children }) => {
     };
   }, []);
 
-  /**
-   * Active le mode invité.
-   *
-   * Aucun compte Supabase n'est créé.
-   * Le mode invité est conservé localement.
-   */
   const enableGuestMode = () => {
     try {
-      localStorage.setItem(GUEST_KEY, "true");
+      localStorage.setItem(GUEST_KEY, 'true');
     } catch {
-      // Le mode invité fonctionne quand même pendant cette session.
+      // Le mode invité reste actif pendant la session.
     }
 
     setIsGuest(true);
@@ -160,20 +125,17 @@ export const AppProvider = ({ children }) => {
     setProfile(null);
   };
 
-  /**
-   * Déconnexion complète.
-   */
   const logout = async () => {
     try {
       localStorage.removeItem(GUEST_KEY);
     } catch {
-      // Rien à faire si localStorage est indisponible.
+      // Rien à faire.
     }
 
     try {
       await supabase.auth.signOut();
     } catch (error) {
-      console.error("Erreur déconnexion :", error);
+      console.error('Erreur déconnexion:', error);
     }
 
     setIsGuest(false);
@@ -181,40 +143,23 @@ export const AppProvider = ({ children }) => {
     setProfile(null);
   };
 
-  const value = {
-    user,
-    profile,
-    isGuest,
-    loading,
-
-    // Compatibilité avec les composants existants.
-    // session correspond à l'utilisateur connecté.
-    session: user
-      ? {
-          user,
-        }
-      : null,
-
-    enableGuestMode,
-    logout,
-    setProfile,
-  };
-
   return (
-    <AppContext.Provider value={value}>
+    <AppContext.Provider
+      value={{
+        user,
+        profile,
+        isGuest,
+        loading,
+        enableGuestMode,
+        logout,
+        setProfile,
+      }}
+    >
       {children}
     </AppContext.Provider>
   );
 };
 
-export const useApp = () => {
-  const context = useContext(AppContext);
-
-  if (!context) {
-    throw new Error("useApp doit être utilisé dans AppProvider");
-  }
-
-  return context;
-};
+export const useApp = () => useContext(AppContext);
 
 export default AppContext;
