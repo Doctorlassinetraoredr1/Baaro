@@ -1,72 +1,58 @@
--- BAARO — correctif ciblé profil + abonnements + amis
--- À exécuter dans Supabase SQL Editor.
--- Ne modifie pas les autres fonctionnalités.
+-- 1. Adaptation dynamique de la table 'follows' existante
+DO $$ 
+BEGIN
+    -- Si la table n'existe pas, on la crée
+    IF NOT EXISTS (SELECT FROM pg_tables WHERE schemaname = 'public' AND tablename = 'follows') THEN
+        CREATE TABLE public.follows (
+            follower_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+            following_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+            created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+            PRIMARY KEY (follower_id, following_id)
+        );
+    ELSE
+        -- Renommer 'followed_id' en 'following_id' si la colonne s'appelait ainsi
+        IF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'follows' AND column_name = 'followed_id') THEN
+            ALTER TABLE public.follows RENAME COLUMN followed_id TO following_id;
+        -- Renommer 'target_id' en 'following_id' si la colonne s'appelait ainsi
+        ELSIF EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'follows' AND column_name = 'target_id') THEN
+            ALTER TABLE public.follows RENAME COLUMN target_id TO following_id;
+        -- Si 'following_id' n'existe toujours pas, on l'ajoute
+        ELSIF NOT EXISTS (SELECT FROM information_schema.columns WHERE table_name = 'follows' AND column_name = 'following_id') THEN
+            ALTER TABLE public.follows ADD COLUMN following_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE;
+        END IF;
+    END IF;
+END $$;
 
-alter table public.profiles add column if not exists first_name text;
-alter table public.profiles add column if not exists last_name text;
-alter table public.profiles add column if not exists birth_date date;
-alter table public.profiles add column if not exists location text;
-alter table public.profiles add column if not exists country text;
-alter table public.profiles add column if not exists avatar_url text;
-alter table public.profiles add column if not exists updated_at timestamptz not null default now();
+-- 2. Indexation pour optimiser les performances
+CREATE INDEX IF NOT EXISTS idx_follows_follower ON public.follows(follower_id);
+CREATE INDEX IF NOT EXISTS idx_follows_following ON public.follows(following_id);
 
-alter table public.follows add column if not exists status text not null default 'accepted';
-alter table public.follows add column if not exists is_friend boolean not null default false;
-alter table public.follows add column if not exists id uuid default gen_random_uuid();
+-- 3. Activation et réinitialisation des politiques RLS
+ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
 
-create unique index if not exists idx_follows_id on public.follows(id);
-create index if not exists idx_follows_follower_status on public.follows(follower_id, status);
-create index if not exists idx_follows_followed_status on public.follows(followed_id, status);
-create index if not exists idx_follows_friend on public.follows(follower_id, followed_id, is_friend, status);
+DROP POLICY IF EXISTS "Lecture publique des abonnements" ON public.follows;
+DROP POLICY IF EXISTS "Création par l'utilisateur connecté" ON public.follows;
+DROP POLICY IF EXISTS "Suppression par l'utilisateur connecté" ON public.follows;
 
-create or replace function public.toggle_follow(p_target uuid)
-returns boolean
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  me uuid := auth.uid();
-  exists_row boolean;
-begin
-  if me is null then raise exception 'NOT_AUTHENTICATED'; end if;
-  if p_target is null or p_target = me then raise exception 'INVALID_TARGET'; end if;
+CREATE POLICY "Lecture publique des abonnements" ON public.follows
+    FOR SELECT USING (true);
 
-  select exists(
-    select 1 from public.follows
-    where follower_id = me
-      and followed_id = p_target
-      and status = 'accepted'
-  ) into exists_row;
+CREATE POLICY "Création par l'utilisateur connecté" ON public.follows
+    FOR INSERT WITH CHECK (auth.uid() = follower_id);
 
-  if exists_row then
-    delete from public.follows
-    where follower_id = me and followed_id = p_target;
-    return false;
-  end if;
+CREATE POLICY "Suppression par l'utilisateur connecté" ON public.follows
+    FOR DELETE USING (auth.uid() = follower_id);
 
-  insert into public.follows(follower_id, followed_id, status, is_friend)
-  values (me, p_target, 'accepted', false)
-  on conflict (follower_id, followed_id)
-  do update set status = 'accepted';
-
-  return true;
-end;
-$$;
-
-revoke all on function public.toggle_follow(uuid) from public;
-grant execute on function public.toggle_follow(uuid) to authenticated;
-
-drop policy if exists "profiles_update" on public.profiles;
-create policy "profiles_update" on public.profiles
-for update using (auth.uid() = user_id)
-with check (auth.uid() = user_id);
-
-drop policy if exists "follows_read" on public.follows;
-create policy "follows_read" on public.follows
-for select using (true);
-
-drop policy if exists "follows_own" on public.follows;
-create policy "follows_own" on public.follows
-for all using (auth.uid() = follower_id)
-with check (auth.uid() = follower_id);
+-- 4. Fonction RPC pour récupérer les amis réciproques[span_3](start_span)[span_3](end_span)
+CREATE OR REPLACE FUNCTION public.get_user_friends(user_id_param UUID)
+RETURNS TABLE (friend_id UUID) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT f1.following_id AS friend_id
+  FROM public.follows f1
+  INNER JOIN public.follows f2 
+    ON f1.following_id = f2.follower_id 
+   AND f1.follower_id = f2.following_id
+  WHERE f1.follower_id = user_id_param;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
