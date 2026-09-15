@@ -28,10 +28,7 @@ const requiredFiles = [
   "api/payments.js",
   "api/webhooks.js",
   "api/chat.js",
-  "api/_cors.js",
-  "api/_rateLimit.js",
-  "api/_logger.js",
-  "api/_supabaseAdmin.js",
+  "api/_shared.js",
   "capacitor.config.json",
   "vercel.json",
   "supabase/migrations/023_marketplace_orders.sql",
@@ -108,10 +105,12 @@ for (const [needle, label] of rewrites) {
   else fail(`rewrite missing: ${label}`);
 }
 
-// ——— Rate-limit async présent ———
-const rl = fs.readFileSync(path.join(root, "api/_rateLimit.js"), "utf8");
-if (rl.includes("rateLimitAsync") && rl.includes("UPSTASH")) ok("rateLimitAsync + Upstash ready");
-else fail("_rateLimit.js missing rateLimitAsync/Upstash");
+// ——— Helpers API consolidés ———
+const shared = fs.readFileSync(path.join(root, "api/_shared.js"), "utf8");
+if (shared.includes("rateLimitAsync") && shared.includes("UPSTASH")) ok("_shared.js: rateLimitAsync + Upstash ready");
+else fail("_shared.js missing rateLimitAsync/Upstash");
+if (shared.includes("cors") || shared.includes("CORS") || shared.includes("ALLOWED_ORIGINS")) ok("_shared.js: CORS helper ready");
+else fail("_shared.js missing CORS helper");
 
 // ——— Live URL optionnelle ———
 const base = process.env.BAARO_BASE_URL;
