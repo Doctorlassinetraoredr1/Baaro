@@ -1,11 +1,5 @@
 import { getAdminClient, requireUser } from "./_shared.js";
 
-// Au-delà de ce nombre de comptes créés depuis le même appareil, les
-// nouveaux comptes sont marqués "restricted" (voir profiles.restricted) :
-// ils gardent un accès normal à l'app mais perdent l'accès aux rachats à
-// valeur réelle (carte cadeau, virement, conversion crypto). Un utilisateur
-// déterminé à vider son stockage local peut contourner ce signal — c'est un
-// frein contre la fraude opportuniste, pas un verrou absolu.
 const MAX_ACCOUNTS_PER_DEVICE = 3;
 
 export default async function handler(req, res) {
@@ -15,43 +9,178 @@ export default async function handler(req, res) {
   }
 
   let admin;
+
   try {
     admin = getAdminClient();
-  } catch (e) {
-    res.status(500).json({ error: e.message });
+  } catch (error) {
+    console.error("Erreur client Supabase :", error);
+
+    res.status(500).json({
+      error: "Configuration serveur indisponible",
+    });
     return;
   }
 
   let user;
+
   try {
     user = await requireUser(req, admin);
-  } catch (e) {
-    res.status(e.status || 401).json({ error: e.message });
+  } catch (error) {
+    console.error("Erreur authentification :", error);
+
+    res.status(error.status || 401).json({
+      error: error.message || "Utilisateur non authentifié",
+    });
     return;
   }
 
   const { deviceId } = req.body || {};
-  if (!deviceId || typeof deviceId !== "string" || deviceId.length > 200) {
-    res.status(400).json({ error: "deviceId invalide" });
+
+  if (
+    typeof deviceId !== "string" ||
+    deviceId.trim().length === 0 ||
+    deviceId.length > 200
+  ) {
+    res.status(400).json({
+      error: "deviceId invalide",
+    });
     return;
   }
 
+  const normalizedDeviceId = deviceId.trim();
+
   try {
-    await admin
+    /*
+     * Identité utilisateur unique :
+     * user.id
+     *
+     * device_id identifie l'appareil.
+     */
+    const { error: upsertError } = await admin
       .from("device_accounts")
-      .upsert({ device_id: deviceId, user_id: user.id }, { onConflict: "device_id,user_id", ignoreDuplicates: true });
+      .upsert(
+        {
+          id: user.id,
+          device_id: normalizedDeviceId,
+        },
+        {
+          onConflict: "device_id,id",
+          ignoreDuplicates: true,
+        }
+      );
 
-    const { count } = await admin
+    if (upsertError) {
+      console.error(
+        "Erreur lors de l'enregistrement de l'appareil :",
+        upsertError
+      );
+
+      res.status(500).json({
+        error: "Impossible d'enregistrer l'appareil",
+      });
+      return;
+    }
+
+    /*
+     * Compte le nombre de comptes associés à l'appareil.
+     */
+    const {
+      count,
+      error: countError,
+    } = await admin
       .from("device_accounts")
-      .select("user_id", { count: "exact", head: true })
-      .eq("device_id", deviceId);
+      .select("id", {
+        count: "exact",
+        head: true,
+      })
+      .eq("device_id", normalizedDeviceId);
 
-    const restricted = (count || 0) > MAX_ACCOUNTS_PER_DEVICE;
-    await admin.from("profiles").update({ restricted }).eq("id", user.id);
+    if (countError) {
+      console.error(
+        "Erreur lors du comptage des comptes :",
+        countError
+      );
 
-    res.status(200).json({ ok: true, accountsOnDevice: count || 0, restricted });
-  } catch (e) {
-    console.error("Erreur /api/register-device :", e);
-    res.status(500).json({ error: "Erreur lors de l'enregistrement de l'appareil" });
+      res.status(500).json({
+        error: "Impossible de vérifier les comptes de l'appareil",
+      });
+      return;
+    }
+
+    const accountsOnDevice = count || 0;
+    const restricted = accountsOnDevice > MAX_ACCOUNTS_PER_DEVICE;
+
+    /*
+     * profiles.id est l'unique identifiant utilisateur.
+     */
+    const { error: profileError } = await admin
+      .from("profiles")
+      .update({
+        restricted,
+      })
+      .eq("id", user.id);
+
+    if (profileError) {
+      console.error(
+        "Erreur lors de la mise à jour du profil :",
+        profileError
+      );
+
+      res.status(500).json({
+        error: "Impossible de mettre à jour le profil",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      ok: true,
+      accountsOnDevice,
+      restricted,
+    });
+  } catch (error) {
+    console.error("Erreur /api/register-device :", error);
+
+    res.status(500).json({
+      error: "Erreur lors de l'enregistrement de l'appareil",
+    });
   }
 }
+
+2. "supabase/migrations/013_device_accounts.sql"
+
+:::writing{variant="document" id="75294" title="supabase/migrations/013_device_accounts.sql"}
+
+-- ============================================================
+-- BAARO - Device Accounts
+-- ============================================================
+-- Identifiant utilisateur unique :
+--     auth.users.id = profiles.id = device_accounts.id
+--
+-- device_id reste uniquement l'identifiant de l'appareil.
+-- Aucun user_id n'est utilisé.
+-- ============================================================
+
+create table if not exists public.device_accounts (
+  id uuid not null
+    references auth.users(id)
+    on delete cascade,
+
+  device_id text not null,
+
+  created_at timestamptz not null default now(),
+
+  primary key (device_id, id)
+);
+
+-- Recherche rapide des comptes associés à un appareil.
+create index if not exists device_accounts_device_id_idx
+  on public.device_accounts (device_id);
+
+-- Sécurité RLS.
+alter table public.device_accounts enable row level security;
+
+-- Les écritures sont effectuées côté serveur par
+-- /api/register-device avec le client administrateur.
+-- Aucune politique publique n'est nécessaire.
+
+Important : cette migration corrige précisément le problème actuel : "/api/register-device" ne cherche plus "user_id" et la table nécessaire est créée avec "id" comme identifiant utilisateur unique.
