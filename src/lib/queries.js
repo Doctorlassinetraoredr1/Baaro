@@ -81,16 +81,7 @@ export async function followUser(currentUserId, targetUserId, opts = {}) {
     return { data: null, error: err };
   }
   return run(
-    supabase
-      .from("follows")
-      .insert({
-        follower_id: currentUserId,
-        followed_id: targetUserId,
-        status: "accepted",
-        is_friend: false,
-      })
-      .select()
-      .maybeSingle(),
+    supabase.rpc("toggle_follow", { p_target: targetUserId }),
     { ...opts, fallback: "Erreur abonnement" }
   );
 }
@@ -205,7 +196,7 @@ export async function acceptFriendRequest(followId, opts = {}) {
     supabase
       .from("follows")
       .update({ status: "accepted", is_friend: true })
-      .eq("id", followId)
+      .eq("follower_id", followId)
       .select()
       .single(),
     { ...opts, fallback: "Erreur acceptation" }
@@ -217,7 +208,7 @@ export async function rejectFriendRequest(followId, opts = {}) {
     supabase
       .from("follows")
       .update({ status: "rejected", is_friend: false })
-      .eq("id", followId)
+      .eq("follower_id", followId)
       .select()
       .single(),
     { ...opts, fallback: "Erreur refus" }
