@@ -9,7 +9,7 @@ export function useCommunity(userId) {
 
   const loadFriends = useCallback(async () => {
     if (!userId) return
-    const { data } = await supabase.from('follows').select('followed_id, profiles!follows_followed_id_fkey(display_name, handle, avatar_url, is_verified)').eq('follower_id', userId)
+    const { data } = await supabase.from('follows').select('followed_id, profiles(display_name, handle, avatar_url, is_verified)').eq('follower_id', userId)
     if (data) setFriends(data.map(f => ({ id: f.followed_id, ...f.profiles })))
   }, [userId])
 
@@ -27,7 +27,7 @@ export function useCommunity(userId) {
       const enriched = []
       for (let m of data) {
         const { data: channels } = await supabase.from('channels').select('*').eq('group_id', m.groups.id).order('created_at')
-        const { data: members } = await supabase.from('group_members').select('user_id, role, profiles!group_members_user_id_fkey(display_name, handle, avatar_url)').eq('group_id', m.groups.id)
+        const { data: members } = await supabase.from('group_members').select('user_id, role, profiles(display_name, handle, avatar_url)').eq('group_id', m.groups.id)
         const { data: roles } = await supabase.from('group_roles').select('*').eq('group_id', m.groups.id)
         enriched.push({ ...m.groups, myRole: m.role, channels: channels||[], members: members||[], customRoles: roles||[], isOwner: m.groups.owner_id === userId })
       }
@@ -92,7 +92,7 @@ export function useChannelMessages(channelId) {
   const [messages, setMessages] = useState([])
   useEffect(() => {
     if (!channelId) return
-    supabase.from('channel_messages').select('*, profiles!channel_messages_sender_id_fkey(display_name, handle, avatar_url)').eq('channel_id', channelId).order('created_at', { ascending: true }).limit(100).then(({ data }) => setMessages(data||[]))
+    supabase.from('channel_messages').select('*, profiles(display_name, handle, avatar_url)').eq('channel_id', channelId).order('created_at', { ascending: true }).limit(100).then(({ data }) => setMessages(data||[]))
     const ch = supabase.channel(`channel-${channelId}`).on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'channel_messages', filter: `channel_id=eq.${channelId}` }, p => setMessages(prev => [...prev, { ...p.new, profiles: { display_name: '...' } }])).subscribe()
     return () => supabase.removeChannel(ch)
   }, [channelId])
@@ -110,9 +110,9 @@ export function useVoiceChannel(channelId, userId) {
 
   useEffect(() => {
     if (!channelId) return
-    supabase.from('voice_participants').select('*, profiles!voice_participants_user_id_fkey(display_name, handle, avatar_url)').eq('channel_id', channelId).then(({ data }) => setParticipants(data||[]))
+    supabase.from('voice_participants').select('*, profiles(display_name, handle, avatar_url)').eq('channel_id', channelId).then(({ data }) => setParticipants(data||[]))
     const ch = supabase.channel(`voice-${channelId}`).on('postgres_changes', { event: '*', schema: 'public', table: 'voice_participants', filter: `channel_id=eq.${channelId}` }, async () => {
-      const { data } = await supabase.from('voice_participants').select('*, profiles!voice_participants_user_id_fkey(display_name, handle, avatar_url)').eq('channel_id', channelId)
+      const { data } = await supabase.from('voice_participants').select('*, profiles(display_name, handle, avatar_url)').eq('channel_id', channelId)
       setParticipants(data||[])
     }).subscribe()
     return () => supabase.removeChannel(ch)
