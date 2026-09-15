@@ -2,8 +2,18 @@ import fs from 'node:fs';
 
 const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'));
-const declared = { ...(pkg.dependencies ?? {}), ...(pkg.devDependencies ?? {}) };
-const locked = lock.packages?.['']?.dependencies ?? {};
+
+const declared = {
+  ...(pkg.dependencies ?? {}),
+  ...(pkg.devDependencies ?? {}),
+};
+
+const root = lock.packages?.[''] ?? {};
+const locked = {
+  ...(root.dependencies ?? {}),
+  ...(root.devDependencies ?? {}),
+};
+
 const missing = Object.keys(declared).filter((name) => !locked[name]);
 const stale = Object.keys(locked).filter((name) => !declared[name]);
 
@@ -14,4 +24,5 @@ if (missing.length || stale.length) {
   console.error('Run: npm install --package-lock-only --ignore-scripts');
   process.exit(1);
 }
+
 console.log('Dependency manifest and lockfile root are synchronized.');
