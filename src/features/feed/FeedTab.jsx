@@ -159,11 +159,11 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
     if (authorIds.length > 0) {
       const { data: profiles } = await supabase
         .from("profiles")
-        .select("user_id, display_name, handle, flag, avatar_url")
-        .in("user_id", authorIds);
+        .select("id, display_name, handle, flag, avatar_url")
+        .in("id", authorIds);
 
       (profiles || []).forEach((p) => {
-        profilesMap[p.user_id] = p;
+        profilesMap[p.id] = p;
       });
     }
 
