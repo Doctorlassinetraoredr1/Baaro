@@ -1,7 +1,7 @@
 -- Schéma BAARO pour Supabase. À coller dans SQL Editor puis "Run".
 
 create table if not exists wallets (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key references auth.users(id) on delete cascade,
   balance numeric not null default 0, updated_at timestamptz not null default now()
 );
 create table if not exists transactions (
@@ -9,11 +9,11 @@ create table if not exists transactions (
   label text not null, pts numeric not null, action_key text, day_key date, reference_id uuid, created_at timestamptz not null default now()
 );
 create table if not exists crypto_holdings (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key references auth.users(id) on delete cascade,
   holdings numeric not null default 0, updated_at timestamptz not null default now()
 );
 create table if not exists profiles (
-  user_id uuid primary key references auth.users(id) on delete cascade,
+  id uuid primary key references auth.users(id) on delete cascade,
   display_name text not null default 'Nouveau membre', flag text default '🌍', handle text, created_at timestamptz not null default now()
 );
 create table if not exists posts (
@@ -48,13 +48,13 @@ alter table videos enable row level security;
 alter table follows enable row level security;
 alter table messages enable row level security;
 
-create policy "wallet_own" on wallets for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "wallet_own" on wallets for all using (auth.uid() = id) with check (auth.uid() = id);
 create policy "tx_own" on transactions for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
-create policy "crypto_own" on crypto_holdings for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "crypto_own" on crypto_holdings for all using (auth.uid() = id) with check (auth.uid() = id);
 
 create policy "profiles_read" on profiles for select using (true);
-create policy "profiles_insert" on profiles for insert with check (auth.uid() = user_id);
-create policy "profiles_update" on profiles for update using (auth.uid() = user_id);
+create policy "profiles_insert" on profiles for insert with check (auth.uid() = id);
+create policy "profiles_update" on profiles for update using (auth.uid() = id);
 
 create policy "posts_read" on posts for select using (true);
 create policy "posts_insert" on posts for insert with check (auth.uid() = author_id);

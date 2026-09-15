@@ -8,7 +8,7 @@
 
 create table public.shops (
   id uuid primary key default gen_random_uuid(),
-  owner_id uuid not null references public.profiles(user_id) on delete cascade,
+  owner_id uuid not null references public.profiles(id) on delete cascade,
   name text not null,
   description text,
   category text,
