@@ -28,8 +28,8 @@ export async function getProfile(userId, opts = {}) {
   return run(
     supabase
       .from("profiles")
-      .select("user_id, display_name, handle, flag, bio, created_at")
-      .eq("user_id", userId)
+      .select("id, display_name, handle, flag, bio, created_at")
+      .eq("id", userId)
       .maybeSingle(),
     { ...opts, fallback: "Erreur chargement profil" }
   );
@@ -40,8 +40,8 @@ export async function getProfilesByIds(ids, opts = {}) {
   return run(
     supabase
       .from("profiles")
-      .select("user_id, display_name, handle, flag, bio")
-      .in("user_id", ids),
+      .select("id, display_name, handle, flag, bio")
+      .in("id", ids),
     { ...opts, fallback: "Erreur chargement profils" }
   );
 }
@@ -50,7 +50,7 @@ export async function upsertProfile(userId, fields, opts = {}) {
   return run(
     supabase
       .from("profiles")
-      .upsert({ user_id: userId, ...fields })
+      .upsert({ id: userId, ...fields })
       .select()
       .single(),
     { ...opts, fallback: "Erreur mise à jour profil" }
@@ -252,7 +252,7 @@ export async function getWallet(userId, opts = {}) {
     supabase
       .from("wallets")
       .select("balance")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle(),
     { ...opts, fallback: "Erreur chargement portefeuille" }
   );
@@ -263,7 +263,7 @@ export async function getCryptoHoldings(userId, opts = {}) {
     supabase
       .from("crypto_holdings")
       .select("holdings")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle(),
     { ...opts, fallback: "Erreur chargement crypto" }
   );
