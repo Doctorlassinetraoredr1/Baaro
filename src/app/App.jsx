@@ -12,5 +12,6 @@ export default function App() {
 
   if (loading) return <LoadingScreen />;
   if (!session) return <AuthScreen />;
+
   return <MainShell />;
 }
