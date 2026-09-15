@@ -20,8 +20,9 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 
 // ========== IDENTITÉ UTILISATEUR UNIQUE ==========
 // Règle BAARO : l'identité utilisateur est TOUJOURS auth.users.id.
-// profiles.id, wallets.id, crypto_holdings.id (= auth.users.id) et follows.*_id / autres FK utilisateur
-// référencent ce même UUID. Aucun wallet_id ou identifiant utilisateur parallèle.
+// PLUS DE user_id comme clé d'identité.
+// profiles.id / wallets.id / crypto_holdings.id = auth.users.id
+// Les colonnes FK (author_id, sender_id, user_id dans les tables de relation) pointent vers ce même UUID.
 
 const getCurrentUserId = async () => {
   const { data: { user }, error } = await supabase.auth.getUser();
