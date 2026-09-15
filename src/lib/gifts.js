@@ -17,7 +17,7 @@ export async function sendGift({ debateId, receiverId, giftId, amount = 1 }) {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${session.access_token}`
     },
-    body: JSON.stringify({ debateId, receiverId, giftId, amount })
+    body: JSON.stringify({ roomId: debateId, giftId, amount })
   })
   const data = await res.json()
   if (!res.ok) throw new Error(data.error)
@@ -26,7 +26,7 @@ export async function sendGift({ debateId, receiverId, giftId, amount = 1 }) {
 
 export function subscribeGifts(debateId, callback) {
   const channel = supabase.channel(`gifts-${debateId}`)
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gifts_sent', filter: `debate_id=eq.${debateId}` }, (payload) => {
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'gifts_sent', filter: `room_id=eq.${debateId}` }, (payload) => {
       // Enrichir avec catalogue et profiles si besoin
       callback(payload.new)
     })
