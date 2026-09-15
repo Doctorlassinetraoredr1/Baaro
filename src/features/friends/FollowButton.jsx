@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { useApp } from "../../contexts/AppContext";
 import { supabase } from "../../supabaseClient";
 
-export const FollowButton = ({ targetUserId, onRequireAuth }) => {
+const FollowButton = ({ targetUserId, onRequireAuth }) => {
   const { user, isGuest } = useApp();
+
   const [isFollowing, setIsFollowing] = useState(false);
   const [loading, setLoading] = useState(false);
 
@@ -13,31 +14,55 @@ export const FollowButton = ({ targetUserId, onRequireAuth }) => {
       return;
     }
 
+    // Impossible de se suivre soi-même.
+    if (targetUserId === user.id) {
+      setIsFollowing(false);
+      return;
+    }
+
+    let cancelled = false;
+
     const checkFollowStatus = async () => {
-      const { data, error } = await supabase
-        .from("follows")
-        .select("follower_id, followed_id")
-        .eq("follower_id", user.id)
-        .eq("followed_id", targetUserId)
-        .maybeSingle();
+      try {
+        const { data, error } = await supabase
+          .from("follows")
+          .select("follower_id, followed_id")
+          .eq("follower_id", user.id)
+          .eq("followed_id", targetUserId)
+          .maybeSingle();
 
-      if (error) {
-        console.error(
-          "Erreur lors de la vérification de l'abonnement :",
-          error
-        );
-        setIsFollowing(false);
-        return;
+        if (cancelled) return;
+
+        if (error) {
+          console.error(
+            "Erreur lors de la vérification de l'abonnement :",
+            error
+          );
+          setIsFollowing(false);
+          return;
+        }
+
+        setIsFollowing(Boolean(data));
+      } catch (error) {
+        if (!cancelled) {
+          console.error(
+            "Erreur lors de la vérification de l'abonnement :",
+            error
+          );
+          setIsFollowing(false);
+        }
       }
-
-      setIsFollowing(Boolean(data));
     };
 
     checkFollowStatus();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user, isGuest, targetUserId]);
 
-  const handleFollowToggle = async (e) => {
-    e.stopPropagation();
+  const handleFollowToggle = async (event) => {
+    event.stopPropagation();
 
     if (isGuest || !user) {
       if (onRequireAuth) {
@@ -46,7 +71,7 @@ export const FollowButton = ({ targetUserId, onRequireAuth }) => {
       return;
     }
 
-    if (!targetUserId || targetUserId === user.id) {
+    if (!targetUserId || targetUserId === user.id || loading) {
       return;
     }
 
@@ -86,6 +111,7 @@ export const FollowButton = ({ targetUserId, onRequireAuth }) => {
         error
       );
 
+      // Retour à l'état précédent si Supabase échoue.
       setIsFollowing(previousState);
     } finally {
       setLoading(false);
@@ -99,8 +125,19 @@ export const FollowButton = ({ targetUserId, onRequireAuth }) => {
       disabled={loading}
       className={`btn-follow ${isFollowing ? "following" : ""}`}
       aria-pressed={isFollowing}
+      aria-label={
+        isFollowing
+          ? "Se désabonner"
+          : "S'abonner"
+      }
     >
-      {isFollowing ? "Abonné(e)" : "S'abonner"}
+      {loading
+        ? "..."
+        : isFollowing
+          ? "Abonné(e)"
+          : "S'abonner"}
     </button>
   );
 };
+
+export default FollowButton;
