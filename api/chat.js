@@ -45,7 +45,7 @@ async function loadCountry(admin, userId) {
     const { data } = await admin
       .from("profiles")
       .select("country, language")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle();
     return data || {};
   } catch {

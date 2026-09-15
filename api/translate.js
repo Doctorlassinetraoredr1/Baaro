@@ -133,7 +133,7 @@ export default async function handler(req, res) {
     const { data: profile } = await admin
       .from("profiles")
       .select("country")
-      .eq("user_id", user.id)
+      .eq("id", user.id)
       .maybeSingle();
     country = normalizeCountry(profile?.country);
   } catch {

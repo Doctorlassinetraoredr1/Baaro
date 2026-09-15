@@ -29,7 +29,7 @@ async function ensureReferralCode(admin, userId) {
   const { data: profile } = await admin
     .from("profiles")
     .select("referral_code")
-    .eq("user_id", userId)
+    .eq("id", userId)
     .maybeSingle();
 
   if (profile?.referral_code) {
@@ -42,7 +42,7 @@ async function ensureReferralCode(admin, userId) {
     const { data, error } = await admin
       .from("profiles")
       .update({ referral_code: code })
-      .eq("user_id", userId)
+      .eq("id", userId)
       .is("referral_code", null)
       .select("referral_code")
       .maybeSingle();
@@ -53,7 +53,7 @@ async function ensureReferralCode(admin, userId) {
     const { data: again } = await admin
       .from("profiles")
       .select("referral_code")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle();
     if (again?.referral_code) return again.referral_code;
   }
@@ -121,7 +121,7 @@ async function handleApply(admin, user, body, res) {
   const { data: me } = await admin
     .from("profiles")
     .select("referred_by, referral_code")
-    .eq("user_id", user.id)
+    .eq("id", user.id)
     .maybeSingle();
 
   if (me?.referred_by) {
@@ -131,7 +131,7 @@ async function handleApply(admin, user, body, res) {
   // Trouver le parrain
   const { data: referrer } = await admin
     .from("profiles")
-    .select("user_id, referral_code")
+    .select("id, referral_code")
     .eq("referral_code", code)
     .maybeSingle();
 
@@ -139,13 +139,13 @@ async function handleApply(admin, user, body, res) {
     return jsonError(res, 404, "Code de parrainage introuvable");
   }
 
-  if (referrer.user_id === user.id) {
+  if (referrer.id === user.id) {
     return jsonError(res, 400, "Vous ne pouvez pas utiliser votre propre code");
   }
 
   try {
     const { data, error } = await admin.rpc("apply_referral_reward", {
-      p_referrer_id: referrer.user_id,
+      p_referrer_id: referrer.id,
       p_referred_id: user.id,
       p_code: code,
       p_referrer_pts: REFERRER_REWARD,

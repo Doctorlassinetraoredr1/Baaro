@@ -47,7 +47,7 @@ export default async function handler(req, res) {
       .eq("device_id", deviceId);
 
     const restricted = (count || 0) > MAX_ACCOUNTS_PER_DEVICE;
-    await admin.from("profiles").update({ restricted }).eq("user_id", user.id);
+    await admin.from("profiles").update({ restricted }).eq("id", user.id);
 
     res.status(200).json({ ok: true, accountsOnDevice: count || 0, restricted });
   } catch (e) {

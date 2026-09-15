@@ -133,7 +133,7 @@ async function handleStatus(res, admin, userId) {
   if (error) return jsonError(res, 500, normalizeWalletError(error));
 
   const [{ data: holdings, error: holdingsError }, { data: dailyRows, error: dailyError }] = await Promise.all([
-    admin.from('crypto_holdings').select('holdings').eq('user_id', userId).maybeSingle(),
+    admin.from('crypto_holdings').select('holdings').eq('id', userId).maybeSingle(),
     admin.from('transactions').select('action_key,day_key,pts,created_at').eq('user_id', userId).gte('created_at', new Date(new Date().setHours(0,0,0,0)).toISOString()).gt('pts', 0),
   ]);
   if (holdingsError) return jsonError(res, 500, normalizeWalletError(holdingsError));
