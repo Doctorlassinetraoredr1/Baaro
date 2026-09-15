@@ -14,6 +14,7 @@ export function StoryViewer({ group, onClose, currentUserId }) {
   const [poll, setPoll] = useState(null);
   const [pollCounts, setPollCounts] = useState({});
   const [myVote, setMyVote] = useState(null);
+  const [pollError, setPollError] = useState(null);
   const startedAt = useRef(Date.now());
   const videoRef = useRef(null);
   const story = group?.stories?.[index];
@@ -32,6 +33,7 @@ export function StoryViewer({ group, onClose, currentUserId }) {
     setPoll(null);
     setPollCounts({});
     setMyVote(null);
+    setPollError(null);
 
     if (currentUserId) {
       supabase.from("story_views")
@@ -46,18 +48,57 @@ export function StoryViewer({ group, onClose, currentUserId }) {
       setReaction(r?.reaction || null);
 
       if (story.story_type === "poll") {
-        const { data: p } = await supabase.from("story_polls").select("id,question").eq("story_id", story.id).maybeSingle();
-        if (p) {
-          const { data: opts } = await supabase.from("story_poll_options").select("id,option_text,position").eq("poll_id", p.id).order("position");
-          const { data: votes } = await supabase.from("story_poll_votes").select("option_id,user_id").eq("poll_id", p.id);
-          const counts = {};
-          (votes || []).forEach(v => { counts[v.option_id] = (counts[v.option_id] || 0) + 1; });
-          setPoll({ ...p, options: opts || [] });
-          setPollCounts(counts);
-          setMyVote((votes || []).find(v => v.user_id === currentUserId)?.option_id || null);
+        const { data: p, error: pollLoadError } = await supabase
+          .from("story_polls")
+          .select("id,question")
+          .eq("story_id", story.id)
+          .maybeSingle();
+
+        if (pollLoadError) {
+          console.error("Story poll load error:", pollLoadError);
+          setPollError("Impossible de charger ce sondage.");
+          return;
         }
+
+        if (!p) {
+          setPollError("Ce sondage n'est pas enregistré correctement.");
+          return;
+        }
+
+        const { data: opts, error: optionsError } = await supabase
+          .from("story_poll_options")
+          .select("id,option_text,position")
+          .eq("poll_id", p.id)
+          .order("position");
+
+        if (optionsError) {
+          console.error("Story poll options error:", optionsError);
+          setPollError("Impossible de charger les choix du sondage.");
+          return;
+        }
+
+        const { data: votes, error: votesError } = await supabase
+          .from("story_poll_votes")
+          .select("option_id,user_id")
+          .eq("poll_id", p.id);
+
+        if (votesError) {
+          console.error("Story poll votes error:", votesError);
+          setPollError("Impossible de charger les résultats.");
+          return;
+        }
+
+        const counts = {};
+        (votes || []).forEach(v => {
+          counts[v.option_id] = (counts[v.option_id] || 0) + 1;
+        });
+
+        setPoll({ ...p, options: opts || [] });
+        setPollCounts(counts);
+        setMyVote((votes || []).find(v => v.user_id === currentUserId)?.option_id || null);
       }
     };
+
     loadExtras();
 
     if (story.story_type === "video" && videoRef.current) {
@@ -79,6 +120,7 @@ export function StoryViewer({ group, onClose, currentUserId }) {
     if (index < (group?.stories?.length || 1) - 1) setIndex(i => i + 1);
     else onClose();
   };
+
   const previous = () => index > 0 && setIndex(i => i - 1);
 
   const onVideoTime = (e) => {
@@ -98,11 +140,28 @@ export function StoryViewer({ group, onClose, currentUserId }) {
   };
 
   const vote = async (optionId) => {
-    if (!currentUserId || !poll) return;
-    const { error } = await supabase.rpc("vote_story_poll", { p_poll_id: poll.id, p_option_id: optionId });
-    if (error) return;
+    if (!currentUserId || !poll || myVote === optionId) return;
+
+    const previousVote = myVote;
+    const { error } = await supabase.rpc("vote_story_poll", {
+      p_poll_id: poll.id,
+      p_option_id: optionId
+    });
+
+    if (error) {
+      console.error("Story poll vote error:", error);
+      setPollError("Vote impossible pour le moment.");
+      return;
+    }
+
+    setPollError(null);
     setMyVote(optionId);
-    setPollCounts(c => ({ ...c, [optionId]: (c[optionId] || 0) + (myVote ? 0 : 1) }));
+    setPollCounts(c => {
+      const nextCounts = { ...c };
+      if (previousVote) nextCounts[previousVote] = Math.max(0, (nextCounts[previousVote] || 0) - 1);
+      nextCounts[optionId] = (nextCounts[optionId] || 0) + 1;
+      return nextCounts;
+    });
   };
 
   if (!story) return null;
@@ -158,20 +217,30 @@ export function StoryViewer({ group, onClose, currentUserId }) {
         )}
 
         {poll && (
-          <div className="absolute bottom-24 left-4 right-4 max-w-lg mx-auto rounded-2xl bg-black/70 backdrop-blur p-4">
+          <div className="absolute bottom-24 left-4 right-4 max-w-lg mx-auto rounded-2xl bg-black/70 backdrop-blur p-4 z-25">
             <p className="text-white font-bold mb-3">{poll.question}</p>
             <div className="space-y-2">
               {poll.options.map(o => {
                 const count = pollCounts[o.id] || 0;
                 const pct = totalVotes ? Math.round(count / totalVotes * 100) : 0;
                 return (
-                  <button key={o.id} onClick={() => vote(o.id)} className="w-full text-left rounded-xl px-3 py-2 border border-white/15 text-white relative overflow-hidden">
+                  <button key={o.id} onClick={() => vote(o.id)}
+                    className={`w-full text-left rounded-xl px-3 py-2 border text-white relative overflow-hidden ${myVote === o.id ? "border-white" : "border-white/15"}`}>
                     <span className="absolute inset-y-0 left-0 bg-white/10" style={{width:`${pct}%`}} />
-                    <span className="relative z-10 flex justify-between"><span>{o.option_text}</span><span>{pct}%</span></span>
+                    <span className="relative z-10 flex justify-between">
+                      <span>{o.option_text}</span><span>{pct}%</span>
+                    </span>
                   </button>
                 );
               })}
             </div>
+            {pollError && <p className="text-red-300 text-xs mt-2">{pollError}</p>}
+          </div>
+        )}
+
+        {!poll && pollError && story.story_type === "poll" && (
+          <div className="absolute bottom-28 left-4 right-4 max-w-lg mx-auto rounded-xl bg-red-950/80 p-3 text-red-100 text-sm text-center z-25">
+            {pollError}
           </div>
         )}
       </div>
