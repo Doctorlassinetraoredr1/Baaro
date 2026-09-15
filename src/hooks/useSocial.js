@@ -22,25 +22,9 @@ export function useFollow(userId, targetId) {
     if (!userId || !targetId || userId === targetId || loading) return;
     setLoading(true);
     try {
-      if (isFollowing) {
-        await supabase
-          .from("follows")
-          .delete()
-          .eq("follower_id", userId)
-          .eq("followed_id", targetId);
-        setIsFollowing(false);
-      } else {
-        await supabase.from("follows").insert({
-          follower_id: userId,
-          followed_id: targetId,
-        });
-        setIsFollowing(true);
-        // notification optionnelle
-        await supabase.from("notifications").insert({
-          user_id: targetId,
-          message: "Quelqu'un s'est abonné à vous",
-        });
-      }
+      const { data, error } = await supabase.rpc("toggle_follow", { p_target: targetId });
+      if (error) throw error;
+      setIsFollowing(Boolean(data));
     } finally {
       setLoading(false);
     }
