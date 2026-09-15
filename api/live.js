@@ -41,8 +41,8 @@ export default async function handler(req) {
           .from('pk_battles')
           .select(`
             *,
-            streamer_a:profiles!streamer_a_id(username, avatar_url),
-            streamer_b:profiles!streamer_b_id(username, avatar_url)
+            streamer_a:profiles!streamer_a_id(display_name, avatar_url),
+            streamer_b:profiles!streamer_b_id(display_name, avatar_url)
           `)
           .eq('id', battleId)
           .single();
@@ -59,8 +59,8 @@ export default async function handler(req) {
           .from('pk_battles')
           .select(`
             *,
-            streamer_a:profiles!streamer_a_id(username, avatar_url),
-            streamer_b:profiles!streamer_b_id(username, avatar_url)
+            streamer_a:profiles!streamer_a_id(display_name, avatar_url),
+            streamer_b:profiles!streamer_b_id(display_name, avatar_url)
           `)
           .eq('status', 'active')
           .order('created_at', { ascending: false })
