@@ -1,10 +1,10 @@
 import { useState } from 'react'
 import { useCommunity, useChannelMessages, useVoiceChannel } from '../hooks/useCommunity'
+import FollowButton from '../features/friends/FollowButton.jsx'
 
 export default function CommunityTab({ userId }) {
-  const { friends, allUsers, pendingRequests, groups, createGroup, createChannel, deleteChannel, banMember, updateMemberRole, loadUsers, loadFriends, loadRequests, sendFriendRequest, acceptFriendRequest, rejectFriendRequest, followUser } = useCommunity(userId)
+  const { friends, allUsers, groups, createGroup, createChannel, deleteChannel, banMember, updateMemberRole, loadUsers } = useCommunity(userId)
   const [activeTab, setActiveTab] = useState('groups')
-  const [socialBusy, setSocialBusy] = useState(null)
   const [selectedGroup, setSelectedGroup] = useState(null)
   const [selectedChannel, setSelectedChannel] = useState(null)
   const [showCreateGroup, setShowCreateGroup] = useState(false)
@@ -61,7 +61,6 @@ export default function CommunityTab({ userId }) {
           <button onClick={()=>setActiveTab('groups')} className={`flex-1 py-1.5 rounded text-xs ${activeTab==='groups'?'bg-white/15':''}`}>Canaux</button>
           <button onClick={()=>setActiveTab('friends')} className={`flex-1 py-1.5 rounded text-xs ${activeTab==='friends'?'bg-white/15':''}`}>Amis</button>
           <button onClick={()=>setActiveTab('discover')} className={`flex-1 py-1.5 rounded text-xs ${activeTab==='discover'?'bg-white/15':''}`}>Découvrir</button>
-          <button onClick={()=>{setActiveTab('requests');loadRequests()}} className={`flex-1 py-1.5 rounded text-xs ${activeTab==='requests'?'bg-white/15':''}`}>Demandes {pendingRequests.length ? `(${pendingRequests.length})` : ''}</button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 py-2">
@@ -88,8 +87,8 @@ export default function CommunityTab({ userId }) {
                     <div className="ml-6 mt-1 space-y-1">
                       {voiceParticipants.map(p => (
                         <div key={p.user_id} className="flex items-center gap-2 text-xs text-white/60">
-                          <img src={p.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${p.profiles?.username}`} className="w-5 h-5 rounded-full" />
-                          {p.profiles?.username} {p.is_muted && '🔇'}
+                          <img src={p.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${p.profiles?.display_name || p.profiles?.handle}`} className="w-5 h-5 rounded-full" />
+                          {p.profiles?.display_name || p.profiles?.handle} {p.is_muted && '🔇'}
                         </div>
                       ))}
                     </div>
@@ -113,8 +112,8 @@ export default function CommunityTab({ userId }) {
                 <button onClick={()=>setShowMembers(!showMembers)} className="text-[11px] text-white/30 uppercase tracking-widest px-2">Membres — {selectedGroup.members?.length}</button>
                 {showMembers && selectedGroup.members?.map(m => (
                   <div key={m.user_id} className="group flex items-center gap-2 px-2 py-1.5 text-xs">
-                    <img src={m.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${m.profiles?.username}`} className="w-6 h-6 rounded-full" />
-                    <span className="flex-1 truncate">{m.profiles?.username}</span>
+                    <img src={m.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${m.profiles?.display_name || m.profiles?.handle}`} className="w-6 h-6 rounded-full" />
+                    <span className="flex-1 truncate">{m.profiles?.display_name || m.profiles?.handle}</span>
                     <span className={`text-[9px] px-1.5 py-0.5 rounded ${roleColor(m.role)}`}>{m.role}</span>
                     {isAdmin && m.user_id!==userId && m.role!=='owner' && (
                       <div className="hidden group-hover:flex gap-1">
@@ -128,41 +127,23 @@ export default function CommunityTab({ userId }) {
             </>
           )}
 
-          {activeTab==='friends' && (
-            <div>{friends.map(f => (
-            <div key={f.user_id} className="px-2 py-2 flex items-center gap-2 text-sm hover:bg-white/5 rounded">
-              <img src={f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(f.display_name || f.user_id)}`} className="w-7 h-7 rounded-full" />
-              <span>{f.display_name || "Membre"}</span><span className="ml-auto w-2 h-2 bg-green-500 rounded-full"></span>
+          {activeTab==='friends' && friends.map(f => (
+            <div key={f.id} className="px-2 py-2 flex items-center gap-2 text-sm hover:bg-white/5 rounded">
+              <img src={f.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${f.display_name || f.handle}`} className="w-7 h-7 rounded-full" />
+              <span>{f.display_name || f.handle || 'Membre'}</span><span className="ml-auto w-2 h-2 bg-green-500 rounded-full"></span>
             </div>
-            ))}
-              {!friends.length && <div className="text-xs text-white/40 p-3">Aucun ami pour le moment.</div>}
-            </div>
-          )}
+          ))}
 
           {activeTab==='discover' && (
             <div>
               <input value={search} onChange={e=>{setSearch(e.target.value); loadUsers(e.target.value)}} placeholder="Chercher" className="w-full bg-black/50 px-3 py-2 rounded-full text-xs mb-3" />
               {allUsers.map(u => (
                 <div key={u.user_id} className="flex items-center gap-2 py-1.5 text-sm">
-                  <img src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(u.display_name || u.handle || u.user_id)}`} className="w-7 h-7 rounded-full" />
-                  <div className="flex-1"><div>{u.display_name || 'Membre'}</div><div className="text-[10px] text-white/40">{u.handle ? `@${String(u.handle).replace(/^@/,'')}` : ''}</div><div className="text-[10px] text-white/40">{u.country||'Mali'}</div></div>
-                  <div className="flex gap-1"><button disabled={socialBusy===u.user_id} onClick={async()=>{try{setSocialBusy(u.user_id); await followUser(u.user_id); await loadFriends();}catch(e){console.error(e)}finally{setSocialBusy(null)}}} className="text-[10px] bg-white/10 px-3 py-1 rounded-full">{socialBusy===u.user_id?"…":"Suivre"}</button><button disabled={socialBusy===u.user_id} onClick={async()=>{try{setSocialBusy(`f-${u.user_id}`); await sendFriendRequest(u.user_id); await loadRequests();}catch(e){console.error(e)}finally{setSocialBusy(null)}}} className="text-[10px] bg-[#FF6B00] px-3 py-1 rounded-full">Ami</button></div>
+                  <img src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${u.display_name || u.handle}`} className="w-7 h-7 rounded-full" />
+                  <div className="flex-1"><div>{u.display_name || u.handle || 'Membre'}</div><div className="text-[10px] text-white/40">{u.country||'Mali'}</div></div>
+                  {u.user_id !== userId && <FollowButton targetUserId={u.user_id} currentUserId={userId} />}
                 </div>
               ))}
-            </div>
-          )}
-
-          {activeTab==='requests' && (
-            <div className="space-y-2">
-              {pendingRequests.map(r => (
-                <div key={r.user_id} className="flex items-center gap-2 p-2 rounded bg-white/5">
-                  <img src={r.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(r.display_name || r.user_id)}`} className="w-8 h-8 rounded-full" />
-                  <div className="flex-1"><div className="text-xs font-semibold">{r.display_name || 'Membre'}</div><div className="text-[10px] text-white/40">{r.handle ? `@${String(r.handle).replace(/^@/,'')}` : ''}</div></div>
-                  <button onClick={async()=>{try{await acceptFriendRequest(r.requester_id);await loadFriends();await loadRequests()}catch(e){console.error(e)}}} className="text-[10px] bg-green-600 px-2 py-1 rounded">✓</button>
-                  <button onClick={async()=>{try{await rejectFriendRequest(r.requester_id);await loadRequests()}catch(e){console.error(e)}}} className="text-[10px] bg-red-600 px-2 py-1 rounded">✕</button>
-                </div>
-              ))}
-              {!pendingRequests.length && <div className="text-xs text-white/40 p-3">Aucune demande.</div>}
             </div>
           )}
 
@@ -195,8 +176,8 @@ export default function CommunityTab({ userId }) {
             <div className="mt-8 grid grid-cols-3 gap-4">
               {voiceParticipants.map(p => (
                 <div key={p.user_id} className="bg-[#111] p-3 rounded-xl text-center">
-                  <img src={p.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${p.profiles?.username}`} className="w-12 h-12 rounded-full mx-auto mb-2" />
-                  <div className="text-xs">{p.profiles?.username}</div>
+                  <img src={p.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${p.profiles?.display_name || p.profiles?.handle}`} className="w-12 h-12 rounded-full mx-auto mb-2" />
+                  <div className="text-xs">{p.profiles?.display_name || p.profiles?.handle}</div>
                 </div>
               ))}
             </div>
@@ -210,9 +191,9 @@ export default function CommunityTab({ userId }) {
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {messages.map(m => (
                 <div key={m.id} className="flex gap-3">
-                  <img src={m.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${m.profiles?.username || 'user'}`} className="w-8 h-8 rounded-full mt-0.5" />
+                  <img src={m.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${m.profiles?.display_name || m.profiles?.handle || 'user'}`} className="w-8 h-8 rounded-full mt-0.5" />
                   <div>
-                    <div className="flex items-baseline gap-2"><span className="text-sm font-bold">{m.profiles?.username||'Utilisateur'}</span><span className="text-[10px] text-white/30">{new Date(m.created_at).toLocaleTimeString()}</span></div>
+                    <div className="flex items-baseline gap-2"><span className="text-sm font-bold">{m.profiles?.display_name || m.profiles?.handle||'Utilisateur'}</span><span className="text-[10px] text-white/30">{new Date(m.created_at).toLocaleTimeString()}</span></div>
                     <div className="text-[14px] text-white/80 leading-5">{m.text}</div>
                   </div>
                 </div>

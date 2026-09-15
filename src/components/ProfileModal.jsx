@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import {
   X,
   User,
@@ -14,6 +14,7 @@ import ProfileContactLinksView from "./ProfileContactLinksView.jsx";
 import FollowButton from "../features/friends/FollowButton.jsx";
 import { useToast } from "./ToastContext.jsx";
 import { COLORS } from "../theme.js";
+import { sendFriendRequest } from "../supabaseClient.js";
 
 function formatDate(value) {
   if (!value) return null;
@@ -50,6 +51,7 @@ export function ProfileModal({
   onNavigateToMessages,
 }) {
   const { showToast } = useToast();
+  const [friendLoading, setFriendLoading] = useState(false);
 
   const {
     profile,
@@ -61,6 +63,21 @@ export function ProfileModal({
   } = useProfile(authorId, showToast);
 
   const stats = useProfileStats(authorId);
+
+  const handleFriendRequest = async () => {
+    if (!currentUserId || !authorId || currentUserId === authorId || friendLoading) return;
+    setFriendLoading(true);
+    try {
+      const { error } = await sendFriendRequest(authorId);
+      if (error) throw error;
+      showToast("Demande d'ami envoyée", "success");
+    } catch (error) {
+      console.error("Erreur demande d'ami:", error);
+      showToast("Impossible d'envoyer la demande d'ami", "error");
+    } finally {
+      setFriendLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (!authorId) return undefined;
@@ -238,6 +255,20 @@ export function ProfileModal({
                         targetUserId={authorId}
                         currentUserId={currentUserId}
                       />
+
+                      <button
+                        type="button"
+                        onClick={handleFriendRequest}
+                        disabled={friendLoading}
+                        className="flex h-10 items-center gap-2 rounded-full border px-4 text-sm font-semibold transition hover:scale-[1.02] disabled:opacity-60"
+                        style={{
+                          background: COLORS.surface,
+                          borderColor: COLORS.borderGold,
+                          color: COLORS.gold,
+                        }}
+                      >
+                        {friendLoading ? "…" : "Ajouter ami"}
+                      </button>
 
                       <button
                         type="button"
