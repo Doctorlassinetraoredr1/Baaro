@@ -5,13 +5,13 @@
  * - Logging structuré
  * - Headers latence / provider
  */
-import { getAdminClient, requireUser } from "./_supabaseAdmin.js";
-import { rateLimitAsync } from "./_rateLimit.js";
-import { applyCors } from "./_cors.js";
+import { getAdminClient, requireUser } from "./_shared.js";
+import { rateLimitAsync } from "./_shared.js";
+import { applyCors } from "./_shared.js";
 import { chooseProvider, normalizeCountry, providerConfig } from "./ai/router.js";
 import { callOpenAICompatible } from "./ai/openai-compatible.js";
 import { isOpen, recordFailure, recordSuccess } from "./ai/circuit.js";
-import { logError, logWarn } from "./_logger.js";
+import { logError, logWarn } from "./_shared.js";
 
 function safeMaxTokens(value) {
   return Math.min(Math.max(Number(value) || 1200, 1), 2000);

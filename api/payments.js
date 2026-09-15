@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import { createCheckoutSession, mapStripeError } from './_stripe.js';
-import { rateLimitAsync } from './_rateLimit.js';
-import { applyCors } from './_cors.js';
+import { createCheckoutSession, mapStripeError } from './_shared.js';
+import { rateLimitAsync } from './_shared.js';
+import { applyCors } from './_shared.js';
 
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;

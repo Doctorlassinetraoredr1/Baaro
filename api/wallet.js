@@ -1,6 +1,6 @@
-import { getAdminClient, requireUser } from './_supabaseAdmin.js';
-import { rateLimitAsync } from './_rateLimit.js';
-import { applyCors } from './_cors.js';
+import { getAdminClient, requireUser } from './_shared.js';
+import { rateLimitAsync } from './_shared.js';
+import { applyCors } from './_shared.js';
 
 const DAILY_CAP = 100;
 const REWARD_POINTS = {

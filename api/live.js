@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
-import { corsHeaders, handleCors } from './_cors.js';
-import { supabaseAdmin } from './_supabaseAdmin.js';
+import { corsHeaders, handleCors } from './_shared.js';
+import { supabaseAdmin } from './_shared.js';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');

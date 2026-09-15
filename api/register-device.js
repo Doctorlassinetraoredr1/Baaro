@@ -1,4 +1,4 @@
-import { getAdminClient, requireUser } from "./_supabaseAdmin.js";
+import { getAdminClient, requireUser } from "./_shared.js";
 
 // Au-delà de ce nombre de comptes créés depuis le même appareil, les
 // nouveaux comptes sont marqués "restricted" (voir profiles.restricted) :

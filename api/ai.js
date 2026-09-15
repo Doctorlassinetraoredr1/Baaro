@@ -1,5 +1,5 @@
-import { getAdminClient, requireUser } from "./_supabaseAdmin.js";
-import { applyCors } from "./_cors.js";
+import { getAdminClient, requireUser } from "./_shared.js";
+import { applyCors } from "./_shared.js";
 import { chooseProvider, normalizeCountry } from "./ai/router.js";
 
 const RATE_LIMIT_MS = 20000;

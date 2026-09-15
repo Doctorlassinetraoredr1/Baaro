@@ -1,4 +1,4 @@
-import { applyCors } from './_cors.js';
+import { applyCors } from './_shared.js';
 
 // Payout endpoint is intentionally disabled until a verified provider and
 // settlement flow are configured. It never debits a user's wallet.

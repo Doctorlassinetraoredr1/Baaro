@@ -1,7 +1,7 @@
 import { randomInt } from "node:crypto";
-import { getAdminClient, requireUser } from "./_supabaseAdmin.js";
-import { rateLimitAsync } from "./_rateLimit.js";
-import { applyCors } from "./_cors.js";
+import { getAdminClient, requireUser } from "./_shared.js";
+import { rateLimitAsync } from "./_shared.js";
+import { applyCors } from "./_shared.js";
 
 const REFERRER_REWARD = 25; // pts pour le parrain
 const REFERRED_REWARD = 15; // pts pour le filleul
