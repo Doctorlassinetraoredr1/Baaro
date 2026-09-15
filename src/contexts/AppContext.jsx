@@ -46,29 +46,29 @@ function clearGuestProfile() {
 }
 
 function normalizeProfile(profile = {}, fallback = {}) {
+  const get = (key, defaultValue) =>
+    Object.prototype.hasOwnProperty.call(profile, key)
+      ? profile[key]
+      : Object.prototype.hasOwnProperty.call(fallback, key)
+        ? fallback[key]
+        : defaultValue;
+
   return {
-    display_name:
-      profile.display_name || fallback.display_name || "Membre BAARO",
-    handle: profile.handle || fallback.handle || "@membre",
-    flag: profile.flag || fallback.flag || "🌍",
-    bio: profile.bio ?? fallback.bio ?? "",
-    avatar_url: profile.avatar_url || fallback.avatar_url || null,
-    cover_url: profile.cover_url || fallback.cover_url || null,
-    country: profile.country || fallback.country || null,
-    registered_country:
-      profile.registered_country || fallback.registered_country || null,
-    country_changed_at:
-      profile.country_changed_at || fallback.country_changed_at || null,
-    country_change_available_at:
-      profile.country_change_available_at ||
-      fallback.country_change_available_at ||
-      null,
-    first_name: profile.first_name || fallback.first_name || "",
-    last_name: profile.last_name || fallback.last_name || "",
-    birth_date: profile.birth_date || fallback.birth_date || null,
-    location: profile.location || fallback.location || "",
-    is_verified:
-      profile.is_verified === true || fallback.is_verified === true,
+    display_name: get("display_name", "Membre BAARO") || "Membre BAARO",
+    handle: get("handle", "@membre") || "@membre",
+    flag: get("flag", "🌍") || "🌍",
+    bio: get("bio", ""),
+    avatar_url: get("avatar_url", null),
+    cover_url: get("cover_url", null),
+    country: get("country", null),
+    registered_country: get("registered_country", null),
+    country_changed_at: get("country_changed_at", null),
+    country_change_available_at: get("country_change_available_at", null),
+    first_name: get("first_name", ""),
+    last_name: get("last_name", ""),
+    birth_date: get("birth_date", null),
+    location: get("location", ""),
+    is_verified: get("is_verified", false) === true,
   };
 }
 
@@ -218,47 +218,49 @@ export function AppProvider({ children }) {
           const profileToCreate = {
             user_id: userId,
             display_name:
-              localGuestProfile?.display_name ||
+              (isAnonymous ? localGuestProfile?.display_name : null) ||
               metadata.display_name ||
+              metadata.full_name ||
               "Membre BAARO",
             handle:
-              localGuestProfile?.handle ||
+              (isAnonymous ? localGuestProfile?.handle : null) ||
               metadata.handle ||
               "@membre",
             flag:
-              localGuestProfile?.flag ||
+              (isAnonymous ? localGuestProfile?.flag : null) ||
               metadata.flag ||
               "🌍",
             bio:
-              localGuestProfile?.bio ??
+              (isAnonymous ? localGuestProfile?.bio : null) ??
               metadata.bio ??
               "",
             avatar_url:
-              localGuestProfile?.avatar_url ||
+              (isAnonymous ? localGuestProfile?.avatar_url : null) ||
               metadata.avatar_url ||
+              metadata.picture ||
               null,
             cover_url:
-              localGuestProfile?.cover_url ||
+              (isAnonymous ? localGuestProfile?.cover_url : null) ||
               metadata.cover_url ||
               null,
             country:
-              localGuestProfile?.country ||
+              (isAnonymous ? localGuestProfile?.country : null) ||
               metadata.country ||
               null,
             first_name:
-              localGuestProfile?.first_name ||
+              (isAnonymous ? localGuestProfile?.first_name : null) ||
               metadata.first_name ||
               "",
             last_name:
-              localGuestProfile?.last_name ||
+              (isAnonymous ? localGuestProfile?.last_name : null) ||
               metadata.last_name ||
               "",
             birth_date:
-              localGuestProfile?.birth_date ||
+              (isAnonymous ? localGuestProfile?.birth_date : null) ||
               metadata.birth_date ||
               null,
             location:
-              localGuestProfile?.location ||
+              (isAnonymous ? localGuestProfile?.location : null) ||
               metadata.location ||
               "",
           };
@@ -282,7 +284,7 @@ export function AppProvider({ children }) {
         if (profile && !cancelled) {
           const normalizedProfile = normalizeProfile(
             profile,
-            localGuestProfile || {}
+            isAnonymous ? (localGuestProfile || {}) : {}
           );
 
           setUserProfile(normalizedProfile);
