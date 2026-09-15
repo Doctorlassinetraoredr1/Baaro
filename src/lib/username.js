@@ -104,7 +104,7 @@ export async function checkHandleAvailable(supabase, handle, userId = null) {
 
   const { data, error } = await supabase
     .from("profiles")
-    .select("user_id")
+    .select("id")
     .eq("handle", normalized)
     .maybeSingle();
 
@@ -116,26 +116,15 @@ export async function checkHandleAvailable(supabase, handle, userId = null) {
     };
   }
 
-  if (data && data.user_id !== userId) {
-    let suggestion = null;
+  if (data && data.id !== userId) {
     const baseName = core.replace(/\d+$/, "") || core;
-    for (let i = 1; i <= 12; i++) {
-      const candidate = suggestHandle(baseName, i);
-      const { data: taken } = await supabase
-        .from("profiles")
-        .select("user_id")
-        .eq("handle", candidate)
-        .maybeSingle();
-      if (!taken || taken.user_id === userId) {
-        suggestion = candidate;
-        break;
-      }
-    }
+    const candidate = suggestHandle(baseName, Math.floor(Math.random() * 90) + 10);
+    
     return {
       ok: false,
       handle: normalized,
       reason: `L'identifiant ${normalized} est déjà pris.`,
-      suggestion: suggestion || suggestHandle(baseName, Date.now() % 1000),
+      suggestion: candidate,
     };
   }
 
@@ -154,12 +143,10 @@ export async function resolveUniqueHandle(
 
   if (first.ok) return { handle: first.handle, conflict: false };
 
-  // A reserved handle must never abort an otherwise valid profile save.
-  // Generate a safe candidate and continue checking it against the database.
   const base = slugifyUsername(displayName || candidate.replace(/^@/, ""));
   const candidates = [];
   if (first.suggestion) candidates.push(first.suggestion);
-  for (let attempt = 1; attempt <= 20; attempt++) {
+  for (let attempt = 1; attempt <= 10; attempt++) {
     candidates.push(suggestHandle(base, attempt));
   }
   candidates.push(`@baaro_${Math.random().toString(36).slice(2, 8)}`);
@@ -175,12 +162,11 @@ export async function resolveUniqueHandle(
     }
   }
 
-  // Last resort: keep the user's current valid handle when available.
   if (userId) {
     const { data: current } = await supabase
       .from("profiles")
       .select("handle")
-      .eq("user_id", userId)
+      .eq("id", userId)
       .maybeSingle();
     if (current?.handle) {
       const currentCheck = await checkHandleAvailable(supabase, current.handle, userId);
