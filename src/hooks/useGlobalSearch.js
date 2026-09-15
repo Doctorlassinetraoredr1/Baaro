@@ -24,7 +24,7 @@ export function useGlobalSearch(query, delay = 300) {
         // 1. Recherche des utilisateurs (par nom ou pseudo)
         const { data: users, error: usersError } = await supabase
           .from('profiles')
-          .select('user_id, display_name, handle, flag')
+          .select('id, display_name, handle, flag')
           .or(`display_name.ilike.${searchQuery},handle.ilike.${searchQuery}`)
           .limit(5);
 

@@ -3,7 +3,7 @@ import { supabase } from "../supabaseClient.js";
 import { handleDbError } from "../lib/dbErrors.js";
 
 const PROFILE_SELECT =
-  "user_id, display_name, handle, flag, bio, avatar_url, cover_url, first_name, last_name, birth_date, location, country, updated_at, created_at";
+  "id, display_name, handle, flag, bio, avatar_url, cover_url, first_name, last_name, birth_date, location, country, updated_at, created_at";
 
 export function useProfile(userId, showToast) {
   const [profile, setProfile] = useState(null);
@@ -25,7 +25,7 @@ export function useProfile(userId, showToast) {
     setLoading(true);
     try {
       const [profileRes, contactsRes, linksRes, socialsRes] = await Promise.all([
-        supabase.from("profiles").select(PROFILE_SELECT).eq("user_id", userId).maybeSingle(),
+        supabase.from("profiles").select(PROFILE_SELECT).eq("id", userId).maybeSingle(),
         supabase.from("profile_contacts").select("id,contact_type,value,label,position,is_primary").eq("user_id", userId).order("position"),
         supabase.from("profile_links").select("id,link_type,label,url,position").eq("user_id", userId).order("position"),
         supabase.from("profile_social_links").select("id,platform,username,url,position").eq("user_id", userId).order("platform"),
@@ -37,7 +37,7 @@ export function useProfile(userId, showToast) {
       if (socialsRes.error && socialsRes.error.code !== "42P01") throw socialsRes.error;
 
       setProfile(profileRes.data || {
-        user_id: userId,
+        id: userId,
         display_name: "Nouveau membre",
         handle: null,
         flag: "🌍",
@@ -68,7 +68,7 @@ export function useProfile(userId, showToast) {
     setSaving(true);
     try {
       const payload = {
-        user_id: userId,
+        id: userId,
         display_name: updates.display_name?.trim() || "Nouveau membre",
         handle: (updates.handle?.trim() && updates.handle.trim() !== "@membre") ? updates.handle.trim() : null,
         flag: updates.flag || "🌍",
@@ -85,7 +85,7 @@ export function useProfile(userId, showToast) {
 
       const { data, error } = await supabase
         .from("profiles")
-        .upsert(payload, { onConflict: "user_id" })
+        .upsert(payload, { onConflict: "id" })
         .select()
         .single();
 

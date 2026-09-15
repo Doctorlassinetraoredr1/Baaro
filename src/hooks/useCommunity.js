@@ -10,11 +10,11 @@ export function useCommunity(userId) {
   const loadFriends = useCallback(async () => {
     if (!userId) return
     const { data } = await supabase.from('follows').select('followed_id, profiles!follows_followed_id_fkey(display_name, handle, avatar_url, is_verified)').eq('follower_id', userId)
-    if (data) setFriends(data.map(f => ({ user_id: f.followed_id, ...f.profiles })))
+    if (data) setFriends(data.map(f => ({ id: f.followed_id, ...f.profiles })))
   }, [userId])
 
   const loadUsers = useCallback(async (search = '') => {
-    let q = supabase.from('profiles').select('user_id, display_name, handle, avatar_url, bio, country, is_verified').limit(50)
+    let q = supabase.from('profiles').select('id, display_name, handle, avatar_url, bio, country, is_verified').limit(50)
     if (search) q = q.or(`display_name.ilike.%${search}%,handle.ilike.%${search}%`)
     const { data } = await q
     if (data) setAllUsers(data)

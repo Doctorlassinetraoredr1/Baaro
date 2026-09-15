@@ -36,7 +36,7 @@ export function useCryptoKeys(userId) {
         const { data: profile } = await supabase
           .from("profiles")
           .select("public_key")
-          .eq("user_id", userId)
+          .eq("id", userId)
           .maybeSingle();
 
         const serverKey = profile?.public_key
@@ -53,7 +53,7 @@ export function useCryptoKeys(userId) {
           const { error: upErr } = await supabase
             .from("profiles")
             .update({ public_key: localPub })
-            .eq("user_id", userId);
+            .eq("id", userId);
 
           if (upErr) {
             console.warn("[useCryptoKeys] Upload clé publique échoué:", upErr);
@@ -76,7 +76,7 @@ export function useCryptoKeys(userId) {
     const { data, error } = await supabase
       .from("profiles")
       .select("public_key")
-      .eq("user_id", recipientId)
+      .eq("id", recipientId)
       .maybeSingle();
 
     if (error || !data?.public_key) return null;
