@@ -982,6 +982,7 @@ export default function SettingsTab({
           setEditBirthDate(profile.birth_date || "");
           setEditLocation(profile.location || "");
           setEditCountry(profile.country || profile.registered_country || "");
+          setEditHandle(displayHandle(profile.handle, profile.display_name || "Membre"));
           setEditFlag(profile.flag || "🌍");
           setEditBio(profile.bio || "");
         }
@@ -1107,7 +1108,7 @@ export default function SettingsTab({
 
       const { error } = await supabase
         .from("profiles")
-        .update({
+        .upsert({
           display_name: name,
           first_name: editFirstName.trim(),
           last_name: editLastName.trim(),
@@ -1118,8 +1119,7 @@ export default function SettingsTab({
           flag: derivedFlag,
           bio: editBio.trim(),
           updated_at: new Date().toISOString(),
-        })
-        .eq("user_id", user.id);
+        }, { onConflict: "user_id" });
 
       if (error) {
         if (isHandleUniqueViolation(error)) {
@@ -1131,7 +1131,7 @@ export default function SettingsTab({
           );
           const { error: err2 } = await supabase
             .from("profiles")
-            .update({
+            .upsert({
               display_name: name,
               first_name: editFirstName.trim(),
               last_name: editLastName.trim(),
@@ -1142,8 +1142,7 @@ export default function SettingsTab({
               flag: derivedFlag,
               bio: editBio.trim(),
               updated_at: new Date().toISOString(),
-            })
-            .eq("user_id", user.id);
+            }, { onConflict: "user_id" });
           if (err2) throw err2;
           finalHandle = resolved.handle;
           conflictNote = `Identifiant déjà pris — attribué : ${finalHandle}`;
