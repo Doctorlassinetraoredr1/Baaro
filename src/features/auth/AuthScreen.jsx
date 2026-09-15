@@ -21,7 +21,9 @@ export default function AuthScreen() {
 
   const [loading, setLoading] = useState(false);
   const [oauthLoading, setOauthLoading] = useState(null);
+
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
   const [captchaToken, setCaptchaToken] = useState(null);
   const [pendingRef, setPendingRef] = useState(null);
@@ -32,18 +34,24 @@ export default function AuthScreen() {
   }, []);
 
   /**
-   * Connexion anonyme.
+   * Connexion anonyme / invité.
    *
-   * IMPORTANT :
-   * La validation Turnstile ne lance plus automatiquement
-   * cette fonction. L'utilisateur doit cliquer explicitement
-   * sur le bouton d'accès invité.
+   * La validation du CAPTCHA ne déclenche PAS
+   * automatiquement cette fonction.
    */
   const handleAnonymous = async () => {
     if (loading) return;
 
+    if (!captchaToken) {
+      setError(
+        "Veuillez d'abord valider la vérification de sécurité."
+      );
+      return;
+    }
+
     setLoading(true);
     setError(null);
+    setSuccess(null);
 
     try {
       const useCaptcha =
@@ -53,23 +61,28 @@ export default function AuthScreen() {
       const {
         data,
         error: authError,
-      } = await supabase.auth.signInAnonymously(
-        useCaptcha
-          ? {
-              options: {
-                captchaToken,
-              },
-            }
-          : undefined
-      );
+      } =
+        await supabase.auth.signInAnonymously(
+          useCaptcha
+            ? {
+                options: {
+                  captchaToken,
+                },
+              }
+            : undefined
+        );
 
       if (authError) {
         throw authError;
       }
 
       if (!data?.session) {
-        throw new Error("Session non créée");
+        throw new Error("Session non créée.");
       }
+
+      setSuccess(
+        "Connexion réussie. Bienvenue sur BAARO !"
+      );
     } catch (err) {
       console.error(
         "Erreur connexion anonyme :",
@@ -86,7 +99,7 @@ export default function AuthScreen() {
   };
 
   /**
-   * Connexion ou inscription avec email.
+   * Connexion / inscription avec email.
    */
   const handleEmailSubmit = async (event) => {
     event.preventDefault();
@@ -95,37 +108,45 @@ export default function AuthScreen() {
 
     const cleanEmail = email.trim();
 
+    setError(null);
+    setSuccess(null);
+
     if (!cleanEmail) {
       setError("Veuillez saisir votre email.");
       return;
     }
 
     if (!password) {
-      setError(
-        "Veuillez saisir votre mot de passe."
-      );
+      setError("Veuillez saisir votre mot de passe.");
       return;
     }
 
     setLoading(true);
-    setError(null);
 
     try {
       if (isLogin) {
         const {
           error: authError,
-        } = await supabase.auth.signInWithPassword({
-          email: cleanEmail,
-          password,
-        });
+        } =
+          await supabase.auth.signInWithPassword({
+            email: cleanEmail,
+            password,
+          });
 
         if (authError) {
           throw authError;
         }
 
+        setSuccess(
+          "Connexion réussie. Bienvenue sur BAARO !"
+        );
+
         return;
       }
 
+      /*
+       * INSCRIPTION
+       */
       const username = cleanEmail
         .split("@")[0]
         .replace(/[^a-zA-Z0-9_.-]/g, "")
@@ -152,20 +173,26 @@ export default function AuthScreen() {
         throw authError;
       }
 
-      /**
-       * Si la confirmation email est désactivée,
-       * Supabase crée généralement directement une session.
+      /*
+       * Cas 1 :
+       * Supabase a créé directement une session.
        */
       if (data?.session) {
+        setSuccess(
+          "Compte créé avec succès. Bienvenue sur BAARO !"
+        );
+
         return;
       }
 
-      /**
-       * Si la confirmation email est activée,
-       * le compte existe mais aucune session n'est encore disponible.
+      /*
+       * Cas 2 :
+       * Confirmation email obligatoire.
+       *
+       * Ce n'est PAS une erreur.
        */
-      setError(
-        "Compte créé avec succès. Vérifiez votre email pour confirmer votre inscription."
+      setSuccess(
+        "Compte créé avec succès. Un email de confirmation vient de vous être envoyé. Vérifiez votre boîte de réception et vos spams avant de vous connecter."
       );
     } catch (err) {
       console.error(
@@ -190,16 +217,18 @@ export default function AuthScreen() {
 
     setOauthLoading(provider);
     setError(null);
+    setSuccess(null);
 
     try {
       const {
         error: authError,
-      } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo: window.location.origin,
-        },
-      });
+      } =
+        await supabase.auth.signInWithOAuth({
+          provider,
+          options: {
+            redirectTo: window.location.origin,
+          },
+        });
 
       if (authError) {
         throw authError;
@@ -220,12 +249,12 @@ export default function AuthScreen() {
   };
 
   /**
-   * Mode email.
+   * Ouvrir le formulaire email.
    */
   const openEmailMode = () => {
     setMode("email");
     setError(null);
-    setCaptchaToken(null);
+    setSuccess(null);
   };
 
   /**
@@ -234,29 +263,17 @@ export default function AuthScreen() {
   const openAnonymousMode = () => {
     setMode("anonymous");
     setError(null);
+    setSuccess(null);
   };
 
   /**
-   * Passage inscription <-> connexion.
+   * Basculer connexion / inscription.
    */
   const toggleAuthMode = () => {
     setIsLogin((value) => !value);
     setError(null);
+    setSuccess(null);
     setPassword("");
-  };
-
-  /**
-   * Mode invité explicite.
-   */
-  const handleGuestClick = () => {
-    if (!captchaToken) {
-      setError(
-        "Veuillez d'abord valider la vérification de sécurité."
-      );
-      return;
-    }
-
-    handleAnonymous();
   };
 
   return (
@@ -415,22 +432,28 @@ export default function AuthScreen() {
               Entre gratuitement
             </p>
 
-            {/* CAPTCHA
-                IMPORTANT : aucune connexion automatique ici.
-            */}
+            {/* CAPTCHA */}
             <div className="flex justify-center">
               <TurnstileWidget
                 onVerify={(token) => {
                   setCaptchaToken(token || null);
                   setError(null);
+                  setSuccess(null);
                 }}
               />
             </div>
 
-            {/* Bouton invité explicite */}
+            {/* Message succès */}
+            {success && (
+              <div className="text-center text-sm text-emerald-400 bg-emerald-500/10 rounded-xl p-3">
+                {success}
+              </div>
+            )}
+
+            {/* Bouton invité */}
             <button
               type="button"
-              onClick={handleGuestClick}
+              onClick={handleAnonymous}
               disabled={
                 loading ||
                 !captchaToken
@@ -447,6 +470,7 @@ export default function AuthScreen() {
                 : "Continuer en tant qu'invité"}
             </button>
 
+            {/* Erreur */}
             {error && (
               <div className="text-center text-sm text-rose-400 bg-rose-500/10 rounded-xl p-3">
                 {error}
@@ -635,6 +659,14 @@ export default function AuthScreen() {
               }}
             />
 
+            {/* Succès / confirmation email */}
+            {success && (
+              <div className="text-center text-sm text-emerald-400 bg-emerald-500/10 rounded-xl p-3">
+                {success}
+              </div>
+            )}
+
+            {/* Erreur */}
             {error && (
               <div className="text-center text-sm text-rose-400 bg-rose-500/10 rounded-xl p-3">
                 {error}
@@ -690,17 +722,4 @@ export default function AuthScreen() {
   );
 }
 
-Le point essentiel corrigé est que :
-
-onVerify={(token) => {
-  setCaptchaToken(token || null);
-  setError(null);
-}}
-
-ne fait plus :
-
-handleAnonymous(token);
-
-Donc la validation du CAPTCHA ne peut plus envoyer automatiquement l'utilisateur vers l'application.
-
-Après cette correction, « Créer un compte » → formulaire d'inscription → clic sur « Créer un compte » restera le parcours normal.
+Cette version garde connexion, inscription, invité, Facebook, X, CAPTCHA et parrainage, tout en séparant correctement les messages de succès et d'erreur.
