@@ -1,5 +1,19 @@
 {
   "installCommand": "npm ci --no-audit --no-fund",
   "buildCommand": "npm run build",
-  "framework": "vite"
+  "framework": "vite",
+  "rewrites": [
+    {
+      "source": "/create-payment",
+      "destination": "/api/create-payment"
+    },
+    {
+      "source": "/payment-webhook",
+      "destination": "/api/payment-webhook"
+    },
+    {
+      "source": "/stripe-webhook",
+      "destination": "/api/stripe-webhook"
+    }
+  ]
 }
