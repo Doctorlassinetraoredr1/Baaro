@@ -39,7 +39,23 @@ export function PollCard({ postId, userId }) {
     setMyVote(mine?.option_id || null);
   }, [postId, userId]);
 
+  // 1. Chargement initial
   useEffect(() => { load(); }, [load]);
+
+  // 2. Abonnement Realtime aux votes pour ce sondage spécifique
+  useEffect(() => {
+    if (!poll?.id) return;
+    const channel = supabase
+      .channel(`poll-votes-${poll.id}`)
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'poll_votes', filter: `poll_id=eq.${poll.id}` }, 
+        () => { load(); } // Recharge les données dès qu'un vote change
+      )
+      .subscribe();
+    
+    return () => { supabase.removeChannel(channel); }; // Nettoyage pour éviter les fuites de mémoire
+  }, [poll?.id, load]);
 
   if (!poll) return null;
   const total = rows.reduce((n, r) => n + Number(r.vote_count || 0), 0);
@@ -112,7 +128,28 @@ export function SocialPostEnhancements({ post, userId }) {
     setFollowing(!!f.data);
   }, [post?.id, post?.author_id, userId]);
 
+  // 1. Chargement initial
   useEffect(() => { load(); }, [load]);
+
+  // 2. Abonnement Realtime aux réactions et favoris pour ce post spécifique
+  useEffect(() => {
+    if (!post?.id) return;
+    const channel = supabase
+      .channel(`post-social-${post.id}`)
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'post_reactions', filter: `post_id=eq.${post.id}` }, 
+        () => { load(); }
+      )
+      .on(
+        'postgres_changes', 
+        { event: '*', schema: 'public', table: 'post_bookmarks', filter: `post_id=eq.${post.id}` }, 
+        () => { load(); }
+      )
+      .subscribe();
+    
+    return () => { supabase.removeChannel(channel); };
+  }, [post?.id, load]);
 
   const current = useMemo(() => REACTIONS.find(x => x.id === reaction), [reaction]);
 
@@ -176,7 +213,6 @@ export function SocialPostEnhancements({ post, userId }) {
         showToast("Lien copié", "success");
       }
       
-      // On n'enregistre en base que si l'utilisateur est connecté (évite les erreurs de clé primaire nulle)
       if (userId) {
         const { error } = await supabase.from("post_shares").insert({ post_id: post.id, id: userId, channel });
         if (error) throw error;
