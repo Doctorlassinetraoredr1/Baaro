@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { Store, PlusCircle, Package, ClipboardList } from "lucide-react";
+import { useState, useEffect, useMemo, useCallback } from "react";
+import { Store, PlusCircle, Package, ClipboardList, Loader2 } from "lucide-react";
 import { COLORS } from "../../theme.js";
 import { supabase } from "../../supabaseClient.js";
 import { LocalShopDirectory, ShopProductManager } from "./ShopFeature.jsx";
@@ -9,58 +9,178 @@ import OrdersBuyer from "./components/OrdersBuyer.jsx";
 import OrdersSeller from "./components/OrdersSeller.jsx";
 
 /**
- * Onglet Boutiques BAARO — version complète
+ * Onglet Boutiques BAARO — version optimisée
  * Modes : directory | detail | register | manage | orders-buyer | orders-seller
  */
 export default function ShopTab({ userId }) {
   const [mode, setMode] = useState("directory");
   const [myShop, setMyShop] = useState(null);
   const [selectedShopId, setSelectedShopId] = useState(null);
+  const [loadingShop, setLoadingShop] = useState(false);
+  const [error, setError] = useState(null);
 
+  // Récupération de la boutique de l'utilisateur avec gestion d'erreur
   useEffect(() => {
-    if (!userId) return;
-    (async () => {
-      const { data } = await supabase
-        .from("shops")
-        .select("id, name, currency, is_active, country, city")
-        .eq("owner_id", userId)
-        .order("created_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      setMyShop(data || null);
-    })();
-  }, [userId, mode]);
+    if (!userId) {
+      setMyShop(null);
+      return;
+    }
 
-  const btn = (active, activeColor = "gold") => ({
-    background: active
-      ? activeColor === "teal"
-        ? COLORS.tealGlow || COLORS.goldGlow
-        : COLORS.goldGlow
-      : COLORS.surface2,
-    borderColor: active
-      ? activeColor === "teal"
-        ? COLORS.borderTeal || COLORS.borderGold
-        : COLORS.borderGold
-      : COLORS.border,
-    color: active
-      ? activeColor === "teal"
-        ? COLORS.teal || COLORS.gold
-        : COLORS.gold
-      : COLORS.ivory,
-  });
+    let cancelled = false;
+    setLoadingShop(true);
+    setError(null);
+
+    (async () => {
+      try {
+        const { data, error: fetchError } = await supabase
+          .from("shops")
+          .select("id, name, currency, is_active, country, city")
+          .eq("owner_id", userId)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (fetchError) throw fetchError;
+        
+        if (!cancelled) {
+          setMyShop(data || null);
+        }
+      } catch (err) {
+        console.error("Erreur chargement boutique:", err);
+        if (!cancelled) setError(err.message);
+      } finally {
+        if (!cancelled) setLoadingShop(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId]);
+
+  // Style des boutons mémorisé pour éviter les recalculs
+  const getButtonStyle = useMemo(() => {
+    return (active, activeColor = "gold") => ({
+      background: active
+        ? activeColor === "teal"
+          ? COLORS.tealGlow || COLORS.goldGlow
+          : COLORS.goldGlow
+        : COLORS.surface2,
+      borderColor: active
+        ? activeColor === "teal"
+          ? COLORS.borderTeal || COLORS.borderGold
+          : COLORS.borderGold
+        : COLORS.border,
+      color: active
+        ? activeColor === "teal"
+          ? COLORS.teal || COLORS.gold
+          : COLORS.gold
+        : COLORS.ivory,
+      transition: "all 0.2s ease-in-out",
+      opacity: loadingShop ? 0.6 : 1,
+      pointerEvents: loadingShop ? "none" : "auto",
+    });
+  }, [loadingShop]);
+
+  // Handlers mémorisés
+  const handleDirectoryClick = useCallback(() => {
+    setMode("directory");
+    setSelectedShopId(null);
+  }, []);
+
+  const handleDetailBack = useCallback(() => {
+    setSelectedShopId(null);
+    setMode("directory");
+  }, []);
+
+  const handleShopSelect = useCallback((shop) => {
+    setSelectedShopId(shop.id);
+    setMode("detail");
+  }, []);
+
+  const handleRegistrationComplete = useCallback(() => {
+    setMode("manage");
+  }, []);
+
+  // Rendu conditionnel optimisé
+  const renderContent = useMemo(() => {
+    if (loadingShop) {
+      return (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="animate-spin" size={32} style={{ color: COLORS.gold }} />
+          <p className="ml-3 text-sm" style={{ color: COLORS.muted }}>
+            Chargement...
+          </p>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="p-4 rounded-xl border" style={{ background: COLORS.surface2, borderColor: "#ef4444" }}>
+          <p className="text-sm" style={{ color: "#ef4444" }}>
+            Erreur: {error}
+          </p>
+        </div>
+      );
+    }
+
+    switch (mode) {
+      case "directory":
+        return (
+          <LocalShopDirectory onSelectShop={handleShopSelect} />
+        );
+      
+      case "detail":
+        return selectedShopId ? (
+          <ShopDetail
+            shopId={selectedShopId}
+            userId={userId}
+            onBack={handleDetailBack}
+          />
+        ) : null;
+      
+      case "register":
+        return (
+          <ShopRegistrationForm onRegistered={handleRegistrationComplete} />
+        );
+      
+      case "manage":
+        return myShop ? (
+          <ShopProductManager shopId={myShop.id} shopCurrency={myShop.currency} />
+        ) : (
+          <p className="text-sm" style={{ color: COLORS.muted }}>
+            Aucune boutique trouvée. Créez-en une d&apos;abord.
+          </p>
+        );
+      
+      case "orders-seller":
+        return myShop ? (
+          <OrdersSeller shopId={myShop.id} />
+        ) : null;
+      
+      case "orders-buyer":
+        return userId ? (
+          <OrdersBuyer userId={userId} />
+        ) : null;
+      
+      default:
+        return null;
+    }
+  }, [mode, loadingShop, error, myShop, userId, selectedShopId, handleShopSelect, handleDetailBack, handleRegistrationComplete]);
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Nav */}
-      <div className="flex flex-wrap gap-2">
+      {/* Navigation */}
+      <nav className="flex flex-wrap gap-2" role="tablist" aria-label="Navigation boutique">
         <button
           type="button"
-          onClick={() => {
-            setMode("directory");
-            setSelectedShopId(null);
-          }}
+          onClick={handleDirectoryClick}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border"
-          style={btn(mode === "directory" || mode === "detail")}
+          style={getButtonStyle(mode === "directory" || mode === "detail")}
+          role="tab"
+          aria-selected={mode === "directory" || mode === "detail"}
+          disabled={loadingShop}
         >
           <Store size={14} />
           Annuaire
@@ -70,34 +190,43 @@ export default function ShopTab({ userId }) {
           type="button"
           onClick={() => setMode("register")}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border"
-          style={btn(mode === "register")}
+          style={getButtonStyle(mode === "register")}
+          role="tab"
+          aria-selected={mode === "register"}
+          disabled={loadingShop}
         >
           <PlusCircle size={14} />
           Créer ma boutique
         </button>
 
         {myShop && (
-          <button
-            type="button"
-            onClick={() => setMode("manage")}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border"
-            style={btn(mode === "manage", "teal")}
-          >
-            <Package size={14} />
-            Mes produits
-          </button>
-        )}
+          <>
+            <button
+              type="button"
+              onClick={() => setMode("manage")}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border"
+              style={getButtonStyle(mode === "manage", "teal")}
+              role="tab"
+              aria-selected={mode === "manage"}
+              disabled={loadingShop}
+            >
+              <Package size={14} />
+              Mes produits
+            </button>
 
-        {myShop && (
-          <button
-            type="button"
-            onClick={() => setMode("orders-seller")}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border"
-            style={btn(mode === "orders-seller", "teal")}
-          >
-            <ClipboardList size={14} />
-            Commandes reçues
-          </button>
+            <button
+              type="button"
+              onClick={() => setMode("orders-seller")}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border"
+              style={getButtonStyle(mode === "orders-seller", "teal")}
+              role="tab"
+              aria-selected={mode === "orders-seller"}
+              disabled={loadingShop}
+            >
+              <ClipboardList size={14} />
+              Commandes reçues
+            </button>
+          </>
         )}
 
         {userId && (
@@ -105,58 +234,20 @@ export default function ShopTab({ userId }) {
             type="button"
             onClick={() => setMode("orders-buyer")}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold border"
-            style={btn(mode === "orders-buyer")}
+            style={getButtonStyle(mode === "orders-buyer")}
+            role="tab"
+            aria-selected={mode === "orders-buyer"}
+            disabled={loadingShop}
           >
             Mes commandes
           </button>
         )}
-      </div>
+      </nav>
 
-      {/* Contenu */}
-      {mode === "directory" && !selectedShopId && (
-        <LocalShopDirectory
-          onSelectShop={(s) => {
-            setSelectedShopId(s.id);
-            setMode("detail");
-          }}
-        />
-      )}
-
-      {mode === "detail" && selectedShopId && (
-        <ShopDetail
-          shopId={selectedShopId}
-          userId={userId}
-          onBack={() => {
-            setSelectedShopId(null);
-            setMode("directory");
-          }}
-        />
-      )}
-
-      {mode === "register" && (
-        <ShopRegistrationForm
-          onRegistered={() => {
-            setMode("manage");
-          }}
-        />
-      )}
-
-      {mode === "manage" && myShop && (
-        <ShopProductManager shopId={myShop.id} shopCurrency={myShop.currency} />
-      )}
-      {mode === "manage" && !myShop && (
-        <p className="text-sm" style={{ color: COLORS.muted }}>
-          Aucune boutique trouvée. Crée-en une d&apos;abord.
-        </p>
-      )}
-
-      {mode === "orders-seller" && myShop && (
-        <OrdersSeller shopId={myShop.id} />
-      )}
-
-      {mode === "orders-buyer" && userId && (
-        <OrdersBuyer userId={userId} />
-      )}
+      {/* Contenu principal */}
+      <main role="tabpanel">
+        {renderContent}
+      </main>
     </div>
   );
 }
