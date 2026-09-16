@@ -1,23 +1,11 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../../supabaseClient.js";
 import { createPayment, getAvailableProviders } from "../../lib/paymentProvider.js";
+import { COLORS } from "../../theme.js"; // 🆕 Import du thème pour la cohérence visuelle
 
 const COUNTRY_CURRENCY = {
-  ML: "XOF",
-  CI: "XOF",
-  SN: "XOF",
-  BF: "XOF",
-  BJ: "XOF",
-  TG: "XOF",
-  GN: "XOF",
-  CM: "XOF",
-  FR: "EUR",
-  BE: "EUR",
-  DE: "EUR",
-  ES: "EUR",
-  IT: "EUR",
-  US: "USD",
-  CA: "USD",
+  ML: "XOF", CI: "XOF", SN: "XOF", BF: "XOF", BJ: "XOF", TG: "XOF", GN: "XOF", CM: "XOF",
+  FR: "EUR", BE: "EUR", DE: "EUR", ES: "EUR", IT: "EUR", US: "USD", CA: "USD",
 };
 
 const TRIAL_DAYS = 30;
@@ -27,9 +15,7 @@ function guessDefaultCountry() {
     const locale = navigator.language || navigator.languages?.[0] || "";
     const region = locale.split("-")[1];
     if (region && region.length === 2) return region.toUpperCase();
-  } catch {
-    /* ignore */
-  }
+  } catch { /* ignore */ }
   return "ML";
 }
 
@@ -57,9 +43,7 @@ export default function ShopRegistrationForm({ onRegistered }) {
   useEffect(() => {
     async function loadUserAndTrial() {
       setCheckingTrial(true);
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setEligibleForTrial(false);
         setCheckingTrial(false);
@@ -113,11 +97,7 @@ export default function ShopRegistrationForm({ onRegistered }) {
     loadPricingAndProviders();
   }, [country]);
 
-  const price = pricing
-    ? isPremium
-      ? pricing.amount_premium
-      : pricing.amount_normal
-    : null;
+  const price = pricing ? (isPremium ? pricing.amount_premium : pricing.amount_normal) : null;
   const currency = pricing?.currency;
 
   async function handleSubmit(e) {
@@ -131,12 +111,9 @@ export default function ShopRegistrationForm({ onRegistered }) {
 
     setLoading(true);
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Non connecté");
 
-      // Re-vérifier l'éligibilité côté client (la vérité reste en base)
       const { count } = await supabase
         .from("shops")
         .select("id", { count: "exact", head: true })
@@ -166,7 +143,6 @@ export default function ShopRegistrationForm({ onRegistered }) {
 
         if (shopError) throw shopError;
 
-        // Trace abonnement gratuit
         await supabase.from("shop_subscriptions").insert({
           shop_id: shop.id,
           amount: 0,
@@ -181,7 +157,7 @@ export default function ShopRegistrationForm({ onRegistered }) {
         return;
       }
 
-      // --- Parcours payant (pas d'essai / renouvellement) ---
+      // --- Parcours payant ---
       if (!pricing || !selectedProvider) {
         setError("Choisissez un moyen de paiement.");
         setLoading(false);
@@ -242,7 +218,7 @@ export default function ShopRegistrationForm({ onRegistered }) {
 
   if (checkingTrial) {
     return (
-      <p className="text-sm text-center p-4 text-gray-400">
+      <p className="text-sm text-center p-4" style={{ color: COLORS.muted }}>
         Vérification de l&apos;offre d&apos;essai…
       </p>
     );
@@ -250,21 +226,16 @@ export default function ShopRegistrationForm({ onRegistered }) {
 
   return (
     <form onSubmit={handleSubmit} className="max-w-md mx-auto space-y-4 p-4">
-      <h2 className="text-lg font-semibold">Créer ma boutique</h2>
+      <h2 className="text-lg font-semibold" style={{ color: COLORS.ivory }}>Créer ma boutique</h2>
 
       {eligibleForTrial ? (
-        <div className="rounded-lg p-3 text-sm bg-emerald-50 text-emerald-800 border border-emerald-200">
+        <div className="rounded-xl p-3 text-sm border" style={{ background: "rgba(45, 191, 166, 0.1)", borderColor: COLORS.borderTeal, color: COLORS.teal }}>
           <strong>Offre de bienvenue</strong>
           <br />
-          Création <strong>gratuite pendant {TRIAL_DAYS} jours</strong> pour les
-          nouveaux utilisateurs. Ensuite, abonnement annuel selon ton pays.
+          Création <strong>gratuite pendant {TRIAL_DAYS} jours</strong> pour les nouveaux utilisateurs. Ensuite, abonnement annuel selon ton pays.
         </div>
       ) : pricing ? (
-        <div
-          className={`rounded-lg p-3 text-sm ${
-            isPremium ? "bg-yellow-50 text-yellow-800" : "bg-gray-50 text-gray-600"
-          }`}
-        >
+        <div className="rounded-xl p-3 text-sm border" style={{ background: isPremium ? "rgba(217, 174, 82, 0.1)" : COLORS.surface2, borderColor: isPremium ? COLORS.borderGold : COLORS.border, color: isPremium ? COLORS.gold : COLORS.muted }}>
           {isPremium
             ? `Tarif premium : ${pricing.amount_premium} ${currency} / an (au lieu de ${pricing.amount_normal} ${currency})`
             : `Tarif : ${pricing.amount_normal} ${currency} / an (premium : ${pricing.amount_premium} ${currency})`}
@@ -274,10 +245,11 @@ export default function ShopRegistrationForm({ onRegistered }) {
       <select
         value={country}
         onChange={(e) => setCountry(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2"
+        className="w-full border rounded-xl px-3 py-2 text-sm outline-none"
+        style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
       >
         {Object.keys(COUNTRY_CURRENCY).map((code) => (
-          <option key={code} value={code}>
+          <option key={code} value={code} style={{ background: COLORS.surface, color: COLORS.ivory }}>
             {code}
           </option>
         ))}
@@ -288,7 +260,8 @@ export default function ShopRegistrationForm({ onRegistered }) {
         placeholder="Nom de la boutique"
         value={name}
         onChange={(e) => setName(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2"
+        className="w-full border rounded-xl px-3 py-2 text-sm outline-none"
+        style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
         required
       />
       <input
@@ -296,35 +269,41 @@ export default function ShopRegistrationForm({ onRegistered }) {
         placeholder="Catégorie (ex: alimentation, services…)"
         value={category}
         onChange={(e) => setCategory(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2"
+        className="w-full border rounded-xl px-3 py-2 text-sm outline-none"
+        style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
       />
       <input
         type="text"
         placeholder="Ville / quartier"
         value={city}
         onChange={(e) => setCity(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2"
+        className="w-full border rounded-xl px-3 py-2 text-sm outline-none"
+        style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
         required
       />
       <textarea
         placeholder="Description (optionnel)"
         value={description}
         onChange={(e) => setDescription(e.target.value)}
-        className="w-full border rounded-lg px-3 py-2"
+        className="w-full border rounded-xl px-3 py-2 text-sm outline-none resize-none"
+        style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
         rows={3}
       />
 
       {!eligibleForTrial && providers.length > 0 && (
-        <div className="space-y-1">
-          <label className="text-sm font-medium">Moyen de paiement</label>
+        <div className="space-y-2">
+          <label className="text-sm font-medium" style={{ color: COLORS.ivory }}>Moyen de paiement</label>
           {providers.map((p) => (
             <button
               key={p.id}
               type="button"
               onClick={() => setSelectedProvider(p)}
-              className={`w-full text-left border rounded-lg px-3 py-2 text-sm ${
-                selectedProvider?.id === p.id ? "border-blue-600 bg-blue-50" : ""
-              }`}
+              className="w-full text-left border rounded-xl px-3 py-2 text-sm transition-all active:scale-[0.98]"
+              style={{
+                background: selectedProvider?.id === p.id ? "rgba(217, 174, 82, 0.1)" : COLORS.surface2,
+                borderColor: selectedProvider?.id === p.id ? COLORS.borderGold : COLORS.border,
+                color: selectedProvider?.id === p.id ? COLORS.gold : COLORS.ivory
+              }}
             >
               {p.label}
             </button>
@@ -332,25 +311,22 @@ export default function ShopRegistrationForm({ onRegistered }) {
         </div>
       )}
 
-      {error && <p className="text-red-600 text-sm">{error}</p>}
+      {error && <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>}
 
       <button
         type="submit"
         disabled={loading || (!eligibleForTrial && !pricing)}
-        className="w-full bg-blue-600 text-white rounded-lg py-2 disabled:opacity-50"
+        className="w-full rounded-xl py-2.5 text-sm font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        style={{ background: COLORS.gold, color: COLORS.bg }}
       >
         {loading
-          ? eligibleForTrial
-            ? "Activation de l'essai…"
-            : "Préparation du paiement…"
+          ? eligibleForTrial ? "Activation de l'essai…" : "Préparation du paiement…"
           : eligibleForTrial
             ? `Activer gratuitement (${TRIAL_DAYS} jours)`
-            : price
-              ? `Payer ${price} ${currency} et activer`
-              : "Chargement…"}
+            : price ? `Payer ${price} ${currency} et activer` : "Chargement…"}
       </button>
 
-      <p className="text-xs text-gray-400 text-center">
+      <p className="text-xs text-center" style={{ color: COLORS.muted }}>
         {eligibleForTrial
           ? `Après ${TRIAL_DAYS} jours, un abonnement annuel sera requis pour rester visible.`
           : "Paiement sécurisé — le montant est revalidé côté serveur."}
