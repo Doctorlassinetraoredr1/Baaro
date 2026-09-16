@@ -27,13 +27,9 @@ export function AppProvider({ children }) {
   const [userProfile, setUserProfile] = useState(DEFAULT_PROFILE);
   const [loading, setLoading] = useState(true);
 
-  const [isGuest, setIsGuest] = useState(() => {
-    try {
-      return localStorage.getItem(GUEST_KEY) === "true";
-    } catch {
-      return false;
-    }
-  });
+  // Ne pas restaurer le mode invité au démarrage : sinon la page de connexion
+  // est sautée automatiquement (localStorage baaro_is_guest).
+  const [isGuest, setIsGuest] = useState(false);
 
   const [isAnonymous, setIsAnonymous] = useState(false);
 
@@ -276,6 +272,11 @@ export function AppProvider({ children }) {
 
     const initialize = async () => {
       try {
+        // Nettoyer l'ancien flag invité pour ne plus sauter l'écran de connexion
+        try {
+          localStorage.removeItem(GUEST_KEY);
+        } catch {}
+
         const {
           data: { session: currentSession },
           error,
@@ -290,31 +291,29 @@ export function AppProvider({ children }) {
 
         if (!mounted) return;
 
+        // Session anonyme restaurée = "auto-invité" : on la déconnecte
+        // pour afficher la page de connexion. L'utilisateur doit recliquer
+        // "Continuer en tant qu'invité" s'il le souhaite.
+        if (currentSession?.user?.is_anonymous) {
+          try {
+            await supabase.auth.signOut({ scope: "local" });
+          } catch (e) {
+            console.warn("[BAARO] signOut anonyme:", e);
+          }
+          if (!mounted) return;
+          resetUserData();
+          setIsGuest(false);
+          return;
+        }
+
         if (currentSession?.user) {
           setSession(currentSession);
           setUser(currentSession.user);
           setIsGuest(false);
-          setIsAnonymous(
-            currentSession.user.is_anonymous === true
-          );
-
-          try {
-            localStorage.setItem(
-              GUEST_KEY,
-              "false"
-            );
-          } catch {}
+          setIsAnonymous(false);
         } else {
           resetUserData();
-
-          let storedGuest = false;
-
-          try {
-            storedGuest =
-              localStorage.getItem(GUEST_KEY) === "true";
-          } catch {}
-
-          setIsGuest(storedGuest);
+          setIsGuest(false);
         }
       } catch (error) {
         console.error(
@@ -333,8 +332,13 @@ export function AppProvider({ children }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(
-      (_event, nextSession) => {
+      (event, nextSession) => {
         if (!mounted) return;
+
+        // Ignorer les events pendant le nettoyage de session anonyme au boot
+        if (event === "INITIAL_SESSION" && nextSession?.user?.is_anonymous) {
+          return;
+        }
 
         if (nextSession?.user) {
           setSession(nextSession);
@@ -343,24 +347,12 @@ export function AppProvider({ children }) {
           setIsAnonymous(
             nextSession.user.is_anonymous === true
           );
-
           try {
-            localStorage.setItem(
-              GUEST_KEY,
-              "false"
-            );
+            localStorage.removeItem(GUEST_KEY);
           } catch {}
         } else {
           resetUserData();
-
-          let storedGuest = false;
-
-          try {
-            storedGuest =
-              localStorage.getItem(GUEST_KEY) === "true";
-          } catch {}
-
-          setIsGuest(storedGuest);
+          setIsGuest(false);
         }
 
         setLoading(false);
