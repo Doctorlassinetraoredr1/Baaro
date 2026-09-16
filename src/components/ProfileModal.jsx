@@ -45,11 +45,18 @@ function getInitials(profile) {
 }
 
 export function ProfileModal({
-  authorId,
-  currentUserId,
+  id,
+  currentId,
   onClose,
   onNavigateToMessages,
 }) {
+  // Alias internes : le reste du composant utilisait déjà authorId/currentUserId.
+  // On les conserve tels quels pour ne rien changer en dessous — seuls les noms
+  // de props reçus changent, pour matcher l'appel réel dans MainShell.jsx
+  // (id / currentId, jamais userId, comme partout ailleurs dans le projet).
+  const authorId = id;
+  const currentUserId = currentId;
+
   const { showToast } = useToast();
   const [friendLoading, setFriendLoading] = useState(false);
 
@@ -252,7 +259,7 @@ export function ProfileModal({
                   {!isOwnProfile && (
                     <>
                       <FollowButton
-                        targetUserId={authorId}
+                        targetId={authorId}
                         currentUserId={currentUserId}
                       />
 
