@@ -1,141 +1,117 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useApp } from "../../contexts/AppContext";
 import { supabase } from "../../supabaseClient";
 
-const FollowButton = ({ targetUserId, onRequireAuth }) => {
+const FollowButton = ({ targetUserId, onRequireAuth, onFollowChange }) => {
   const { user, isGuest } = useApp();
-
   const [isFollowing, setIsFollowing] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // true au début pour éviter le flash "S'abonner"
+
+  const isSelf = user?.id === targetUserId;
+
+  const checkFollowStatus = useCallback(async () => {
+    if (!user || isGuest ||!targetUserId || isSelf) {
+      setIsFollowing(false);
+      setLoading(false);
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+       .from("follows")
+       .select("follower_id")
+       .eq("follower_id", user.id)
+       .eq("followed_id", targetUserId)
+       .limit(1)
+       .maybeSingle();
+
+      if (error) throw error;
+      setIsFollowing(!!data);
+    } catch (err) {
+      console.error("[FollowButton] check error:", err.message);
+      setIsFollowing(false);
+    } finally {
+      setLoading(false);
+    }
+  }, [user, isGuest, targetUserId, isSelf]);
 
   useEffect(() => {
-    if (!user || isGuest || !targetUserId) {
-      setIsFollowing(false);
-      return;
-    }
-
-    // Impossible de se suivre soi-même.
-    if (targetUserId === user.id) {
-      setIsFollowing(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    const checkFollowStatus = async () => {
-      try {
-        const { data, error } = await supabase
-          .from("follows")
-          .select("follower_id, followed_id")
-          .eq("follower_id", user.id)
-          .eq("followed_id", targetUserId)
-          .maybeSingle();
-
-        if (cancelled) return;
-
-        if (error) {
-          console.error(
-            "Erreur lors de la vérification de l'abonnement :",
-            error
-          );
-          setIsFollowing(false);
-          return;
-        }
-
-        setIsFollowing(Boolean(data));
-      } catch (error) {
-        if (!cancelled) {
-          console.error(
-            "Erreur lors de la vérification de l'abonnement :",
-            error
-          );
-          setIsFollowing(false);
-        }
-      }
-    };
-
     checkFollowStatus();
 
-    return () => {
-      cancelled = true;
-    };
-  }, [user, isGuest, targetUserId]);
+    // BONUS: écoute en temps réel si quelqu'un d'autre te follow/unfollow
+    if (!targetUserId) return;
+    const channel = supabase
+     .channel(`follow:${user?.id}:${targetUserId}`)
+     .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'follows', filter: `followed_id=eq.${targetUserId}` },
+        () => checkFollowStatus()
+      )
+     .subscribe();
+    return () => { supabase.removeChannel(channel); }
+  }, [checkFollowStatus, targetUserId, user?.id]);
 
-  const handleFollowToggle = async (event) => {
-    event.stopPropagation();
+  const handleToggle = async (e) => {
+    e.stopPropagation();
+    if (isGuest ||!user) return onRequireAuth?.();
+    if (!targetUserId || isSelf || loading) return;
 
-    if (isGuest || !user) {
-      if (onRequireAuth) {
-        onRequireAuth();
-      }
-      return;
-    }
-
-    if (!targetUserId || targetUserId === user.id || loading) {
-      return;
-    }
-
-    const previousState = isFollowing;
-
-    setIsFollowing(!previousState);
+    const prev = isFollowing;
+    setIsFollowing(!prev);
     setLoading(true);
 
     try {
-      if (previousState) {
+      if (prev) {
+        // Unfollow
         const { error } = await supabase
-          .from("follows")
-          .delete()
-          .eq("follower_id", user.id)
-          .eq("followed_id", targetUserId);
-
-        if (error) {
-          throw error;
-        }
+         .from("follows")
+         .delete()
+         .eq("follower_id", user.id)
+         .eq("followed_id", targetUserId);
+        if (error) throw error;
+        onFollowChange?.(false);
       } else {
+        // Follow avec upsert pour éviter le duplicate key
         const { error } = await supabase
-          .from("follows")
-          .insert([
-            {
-              follower_id: user.id,
-              followed_id: targetUserId,
-            },
-          ]);
+         .from("follows")
+         .upsert(
+            { follower_id: user.id, followed_id: targetUserId },
+            { onConflict: 'follower_id,followed_id', ignoreDuplicates: false }
+          );
+        if (error) throw error;
 
-        if (error) {
-          throw error;
-        }
+        // Crée la notif pour l'autre personne
+        await supabase.from("notifications").insert({
+          user_id: targetUserId,
+          actor_id: user.id,
+          type: 'follow',
+          entity_id: user.id,
+        });
+        onFollowChange?.(true);
       }
-    } catch (error) {
-      console.error(
-        "Erreur lors de la mise à jour de l'abonnement :",
-        error
-      );
-
-      // Retour à l'état précédent si Supabase échoue.
-      setIsFollowing(previousState);
+    } catch (err) {
+      console.error("[FollowButton] toggle error:", err.message);
+      // Message plus clair pour toi
+      if (err.message.includes('row-level security')) {
+        alert("ERREUR RLS: Tu dois ajouter les policies dans Supabase! Regarde le SQL ci-dessous.");
+      }
+      setIsFollowing(prev); // rollback
     } finally {
       setLoading(false);
     }
   };
 
+  if (isSelf) return null;
+
   return (
     <button
-      type="button"
-      onClick={handleFollowToggle}
+      onClick={handleToggle}
       disabled={loading}
-      className={`btn-follow ${isFollowing ? "following" : ""}`}
-      aria-pressed={isFollowing}
-      aria-label={
-        isFollowing
-          ? "Se désabonner"
-          : "S'abonner"
-      }
+      className={`px-4 py-1.5 rounded-full text-sm font-semibold transition-all
+        ${isFollowing
+         ? "bg-zinc-200 text-black hover:bg-red-100 hover:text-red-600"
+          : "bg-[#FF6B00] text-white hover:bg-[#e66000]"}
+        disabled:opacity-50`}
     >
-      {loading
-        ? "..."
-        : isFollowing
-          ? "Abonné(e)"
-          : "S'abonner"}
+      {loading? "..." : isFollowing? "Abonné(e)" : "S'abonner"}
     </button>
   );
 };
