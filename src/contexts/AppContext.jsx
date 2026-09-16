@@ -91,19 +91,6 @@ export function AppProvider({ children }) {
         .eq("id", userId)
         .maybeSingle();
 
-      // Fallback si la colonne s'appelle encore user_id (migrations non appliquées)
-      if (error && (error.message?.includes("id") || error.code === "42703")) {
-        const legacy = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (!legacy.error && legacy.data) {
-          data = { ...legacy.data, id: legacy.data.user_id || legacy.data.id };
-          error = null;
-        }
-      }
-
       if (error) throw error;
 
       // Si le profil n'existe pas encore, on le crée (persistance).
@@ -145,7 +132,7 @@ export function AppProvider({ children }) {
         // Normaliser : toujours exposer .id
         const normalized = {
           ...data,
-          id: data.id || data.user_id || userId,
+          id: data.id || userId,
         };
         setProfile(normalized);
 
