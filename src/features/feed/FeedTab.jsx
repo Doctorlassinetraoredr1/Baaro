@@ -262,6 +262,30 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
     loadPosts();
   }, [loadPosts]);
 
+  // Recharge les likes quand la session arrive (évite likes vides au 1er paint)
+  const postIdsKey = posts.map((p) => p.id).join(",");
+  useEffect(() => {
+    const me = user?.id || userId;
+    if (!me || !postIdsKey) return;
+    let cancelled = false;
+    const ids = postIdsKey.split(",");
+    (async () => {
+      const { data: likes } = await supabase
+        .from("post_likes")
+        .select("post_id")
+        .eq("user_id", me)
+        .in("post_id", ids);
+      if (!cancelled && likes) {
+        setLikedPosts(
+          Object.fromEntries(likes.map((l) => [l.post_id, true]))
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, userId, postIdsKey]);
+
   // Déclenche loadMorePosts() quand le sentinel devient visible en bas du fil.
   useEffect(() => {
     if (!sentinelRef.current) return;
