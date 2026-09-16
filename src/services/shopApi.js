@@ -33,9 +33,11 @@ export async function fetchShopById(shopId) {
 }
 
 export async function fetchShopProducts(shopId, { onlyAvailable = true } = {}) {
+  // ⚠️ CORRECTION : Utilisation de 'shop_items' pour correspondre à la migration 044
+  // (Si ta table s'appelle vraiment 'shop_products' dans ta base, remets 'shop_products')
   let q = supabase
-    .from("shop_products")
-    .select("id, name, description, price, currency, type, image_url, is_available")
+    .from("shop_items")
+    .select("id, name, description, price, currency, stock, image_url, is_available")
     .eq("shop_id", shopId)
     .order("created_at", { ascending: false });
 
@@ -58,15 +60,16 @@ export async function createOrder({
     throw new Error("Commande invalide.");
   }
 
-  // Le serveur recalcule les prix depuis shop_products.
-  // Les prix/noms envoyés par le client ne sont jamais utilisés pour facturer.
+  // Le serveur recalcule les prix depuis shop_items.
   const payload = items.map((i) => ({
-    productId: i.productId,
+    // ⚠️ Vérifie que ta fonction RPC 'create_order_secure' attend bien 'product_id' ou 'item_id'
+    product_id: i.productId, 
     quantity: Math.max(1, Math.min(100, Number(i.quantity) || 1)),
   }));
 
   const { data, error } = await supabase.rpc("create_order_secure", {
     p_shop_id: shopId,
+    p_buyer_id: buyerId, // ✅ Ajouté pour que la RPC sache qui est l'acheteur (convention 'id')
     p_method: method,
     p_notes: notes || null,
     p_dropoff_address: dropoffAddress || null,
@@ -96,7 +99,7 @@ export async function fetchBuyerOrders(userId) {
       shops ( id, name, city ),
       order_items ( id, name, unit_price, quantity, currency )
     `)
-    .eq("buyer_id", userId)
+    .eq("buyer_id", userId) // 'buyer_id' est un rôle spécifique, c'est correct
     .order("created_at", { ascending: false });
   if (error) throw error;
   return data || [];
