@@ -732,5 +732,3 @@ export default function AuthScreen() {
     </div>
   );
 }
-
-Cette version garde connexion, inscription, invité, Facebook, X, CAPTCHA et parrainage, tout en séparant correctement les messages de succès et d'erreur.
