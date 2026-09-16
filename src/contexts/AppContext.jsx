@@ -60,7 +60,8 @@ export function AppProvider({ children }) {
   }, []);
 
   /**
-   * Charge le profil avec auth.users.id = profiles.id.
+   * Charge le profil avec auth.users.id = profiles.id (identité unique).
+   * Crée le profil s'il n'existe pas encore pour garantir la persistance.
    */
   const loadProfile = useCallback(async (userId) => {
     if (!userId) {
@@ -76,16 +77,30 @@ export function AppProvider({ children }) {
         .eq("id", userId)
         .maybeSingle();
 
+      // Fallback si la colonne s'appelle encore user_id (migrations non appliquées)
+      if (error && (error.message?.includes("id") || error.code === "42703")) {
+        const legacy = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (!legacy.error && legacy.data) {
+          data = { ...legacy.data, id: legacy.data.user_id || legacy.data.id };
+          error = null;
+        }
+      }
+
       if (error) throw error;
 
-      // Si le profil n'existe pas encore, on le crée.
+      // Si le profil n'existe pas encore, on le crée (persistance).
       if (!data) {
         const fallback = {
           id: userId,
           display_name: "Membre BAARO",
-          handle: `@user_${userId.slice(0, 8)}`,
+          handle: `@user_${String(userId).slice(0, 8)}`,
           flag: "🌍",
           bio: "",
+          updated_at: new Date().toISOString(),
         };
 
         const created = await supabase
@@ -94,25 +109,44 @@ export function AppProvider({ children }) {
           .select("*")
           .single();
 
-        if (!created.error) {
+        if (created.error) {
+          console.error("[BAARO] Échec création profil:", created.error);
+          // Dernier recours : insert simple
+          const inserted = await supabase
+            .from("profiles")
+            .insert(fallback)
+            .select("*")
+            .single();
+          if (inserted.error) {
+            console.error("[BAARO] Échec insert profil:", inserted.error);
+          } else {
+            data = inserted.data;
+          }
+        } else {
           data = created.data;
         }
       }
 
       if (data) {
-        setProfile(data);
+        // Normaliser : toujours exposer .id
+        const normalized = {
+          ...data,
+          id: data.id || data.user_id || userId,
+        };
+        setProfile(normalized);
 
         setUserProfile({
           display_name:
-            data.display_name || DEFAULT_PROFILE.display_name,
-          handle: data.handle || DEFAULT_PROFILE.handle,
-          flag: data.flag || DEFAULT_PROFILE.flag,
-          bio: data.bio || DEFAULT_PROFILE.bio,
-          ...data,
+            normalized.display_name || DEFAULT_PROFILE.display_name,
+          handle: normalized.handle || DEFAULT_PROFILE.handle,
+          flag: normalized.flag || DEFAULT_PROFILE.flag,
+          bio: normalized.bio || DEFAULT_PROFILE.bio,
+          ...normalized,
         });
+        return normalized;
       }
 
-      return data;
+      return null;
     } catch (error) {
       console.error("[BAARO] Erreur chargement profil:", error);
       return null;
