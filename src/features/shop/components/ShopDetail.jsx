@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Minus, Plus, ShoppingCart, Loader2 } from "lucide-react";
 import { COLORS } from "../../../theme.js";
 import { fetchShopById, fetchShopProducts } from "../../../services/shopApi.js";
@@ -32,7 +32,7 @@ export default function ShopDetail({ shopId, userId, onBack }) {
     return () => { cancelled = true; };
   }, [shopId]);
 
-  // 🆕 Ajout au panier avec persistance Supabase (synchronisé avec CartDrawer)
+  // Ajout au panier via la fonction RPC (sécurisé et atomique)
   const addToCart = useCallback(async (product) => {
     if (!userId) {
       showToast("Connectez-vous pour ajouter au panier", "info");
@@ -40,7 +40,6 @@ export default function ShopDetail({ shopId, userId, onBack }) {
     }
     setAddingId(product.id);
     try {
-      // Utilisation de la fonction RPC pour ajouter de manière atomique
       const { error } = await supabase.rpc('add_to_cart', {
         p_user_id: userId,
         p_item_id: product.id,
@@ -49,7 +48,6 @@ export default function ShopDetail({ shopId, userId, onBack }) {
       
       if (error) throw error;
       
-      // Mise à jour de l'état local pour réactivité immédiate
       setCart((items) => {
         const old = items.find((x) => x.productId === product.id);
         if (old) return items.map((x) => x.productId === product.id ? { ...x, quantity: x.quantity + 1 } : x);
@@ -70,7 +68,7 @@ export default function ShopDetail({ shopId, userId, onBack }) {
     }
   }, [userId, shop?.currency, showToast]);
 
-  // 🆕 Modification de quantité avec persistance Supabase
+  // Modification de quantité (✅ Convention 'id' appliquée ici)
   const changeQuantity = useCallback(async (productId, delta) => {
     if (!userId) return;
     const item = cart.find((x) => x.productId === productId);
@@ -80,10 +78,11 @@ export default function ShopDetail({ shopId, userId, onBack }) {
     
     try {
       if (newQty <= 0) {
-        // ⚠️ Remplace 'user_id' par 'id' ici SI tu as renommé la colonne dans la table cart
-        await supabase.from('cart').delete().eq('item_id', productId).eq('user_id', userId);
+        // ✅ 'id' au lieu de 'user_id'
+        await supabase.from('cart').delete().eq('item_id', productId).eq('id', userId);
       } else {
-        await supabase.from('cart').update({ quantity: newQty }).eq('item_id', productId).eq('user_id', userId);
+        // ✅ 'id' au lieu de 'user_id'
+        await supabase.from('cart').update({ quantity: newQty }).eq('item_id', productId).eq('id', userId);
       }
       
       setCart((items) => items
@@ -220,7 +219,7 @@ export default function ShopDetail({ shopId, userId, onBack }) {
         )}
       </div>
 
-      {/* 🆕 Barre de panier flottante (style mobile moderne) */}
+      {/* Barre de panier flottante */}
       {cart.length > 0 && (
         <div className="fixed bottom-4 left-4 right-4 max-w-2xl mx-auto flex items-center gap-3 rounded-xl border p-3 shadow-2xl backdrop-blur-md z-40" style={{ background: `${COLORS.surface}E6`, borderColor: COLORS.borderGold }}>
           <div className="p-2 rounded-full flex-shrink-0" style={{ background: COLORS.gold }}>
