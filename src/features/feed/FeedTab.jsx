@@ -1,3 +1,4 @@
+import { ConnectionStatus } from "../../components/ConnectionStatus.jsx";
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Heart,
