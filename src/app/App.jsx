@@ -10,10 +10,17 @@ export default function App() {
     return <LoadingScreen />;
   }
 
-  // Afficher la connexion si pas de session.
-  // Le mode invité n'est plus restauré automatiquement depuis localStorage
-  // ni depuis une ancienne session anonyme Supabase.
-  if (!user && !isGuest) {
+  // Compte réel uniquement, ou invité après clic explicite (isGuest / guest_ok).
+  // Une session anonyme restaurée sans flag ne doit PAS ouvrir l'app.
+  const isRealUser = Boolean(user && user.is_anonymous !== true);
+  let guestOk = false;
+  try {
+    guestOk = sessionStorage.getItem("baaro_guest_ok") === "1";
+  } catch {}
+  const isAnonymousAllowed =
+    Boolean(user?.is_anonymous) && guestOk;
+
+  if (!isRealUser && !isGuest && !isAnonymousAllowed) {
     return <AuthScreen />;
   }
 
