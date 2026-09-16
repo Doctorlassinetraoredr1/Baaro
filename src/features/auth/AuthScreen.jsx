@@ -54,6 +54,11 @@ export default function AuthScreen() {
     setSuccess(null);
 
     try {
+      // Autorise la session anonyme UNIQUEMENT pour ce clic (flag d'onglet)
+      try {
+        sessionStorage.setItem("baaro_guest_ok", "1");
+      } catch {}
+
       const useCaptcha =
         captchaToken &&
         captchaToken !== "dev-bypass";
@@ -73,10 +78,16 @@ export default function AuthScreen() {
         );
 
       if (authError) {
+        try {
+          sessionStorage.removeItem("baaro_guest_ok");
+        } catch {}
         throw authError;
       }
 
       if (!data?.session) {
+        try {
+          sessionStorage.removeItem("baaro_guest_ok");
+        } catch {}
         throw new Error("Session non créée.");
       }
 
