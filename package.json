@@ -29,7 +29,6 @@
     "@capacitor/core": "^6.1.2",
     "@capacitor/push-notifications": "^6.0.5",
     "@daily-co/daily-js": "^0.91.0",
-    "@sentry/node": "^10.0.0",
     "@supabase/supabase-js": "^2.45.0",
     "lucide-react": "^0.383.0",
     "react": "^18.3.1",
