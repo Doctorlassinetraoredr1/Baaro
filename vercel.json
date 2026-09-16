@@ -14,6 +14,10 @@
     {
       "source": "/stripe-webhook",
       "destination": "/api/stripe-webhook"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
   ]
 }
