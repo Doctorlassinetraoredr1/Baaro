@@ -61,7 +61,7 @@ export function suggestHandle(displayName, attempt = 0) {
   return `@${base.slice(0, Math.max(1, 30 - suffix.length))}${suffix}`;
 }
 
-export async function checkHandleAvailable(supabase, handle, userId = null) {
+export async function checkHandleAvailable(supabase, handle, id = null) {
   const normalized = normalizeHandle(handle, "");
   const core = normalized.replace(/^@/, "");
 
@@ -82,7 +82,7 @@ export async function checkHandleAvailable(supabase, handle, userId = null) {
     return { ok: false, handle: normalized, reason: "Impossible de vérifier l'identifiant. Réessaie." };
   }
 
-  if (data && data.id !== userId) {
+  if (data && data.id !== id) {
     const baseName = core.replace(/\d+$/, "") || core;
     const candidate = suggestHandle(baseName, Math.floor(Math.random() * 90) + 10);
     return { ok: false, handle: normalized, reason: `L'identifiant ${normalized} est déjà pris.`, suggestion: candidate };
@@ -91,10 +91,10 @@ export async function checkHandleAvailable(supabase, handle, userId = null) {
   return { ok: true, handle: normalized };
 }
 
-export async function resolveUniqueHandle(supabase, rawHandle, displayName, userId) {
+export async function resolveUniqueHandle(supabase, rawHandle, displayName, id) {
   const requested = String(rawHandle || "").trim();
   let candidate = normalizeHandle(requested, displayName);
-  const first = await checkHandleAvailable(supabase, candidate, userId);
+  const first = await checkHandleAvailable(supabase, candidate, id);
 
   if (first.ok) return { handle: first.handle, conflict: false };
 
@@ -107,7 +107,7 @@ export async function resolveUniqueHandle(supabase, rawHandle, displayName, user
   candidates.push(`@baaro_${Math.random().toString(36).slice(2, 8)}`);
 
   for (const tryHandle of candidates) {
-    const check = await checkHandleAvailable(supabase, tryHandle, userId);
+    const check = await checkHandleAvailable(supabase, tryHandle, id);
     if (check.ok) {
       return {
         handle: check.handle,
@@ -117,14 +117,14 @@ export async function resolveUniqueHandle(supabase, rawHandle, displayName, user
     }
   }
 
-  if (userId) {
+  if (id) {
     const { data: current } = await supabase
       .from("profiles")
       .select("handle")
-      .eq("id", userId)
+      .eq("id", id)
       .maybeSingle();
     if (current?.handle) {
-      const currentCheck = await checkHandleAvailable(supabase, current.handle, userId);
+      const currentCheck = await checkHandleAvailable(supabase, current.handle, id);
       if (currentCheck.ok) {
         return {
           handle: current.handle,
