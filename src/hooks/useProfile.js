@@ -30,18 +30,6 @@ export function useProfile(userId, showToast) {
         .eq("id", userId)
         .maybeSingle();
 
-      // Compatibilité temporaire si la colonne s'appelle encore user_id
-      if (profileRes.error && (profileRes.error.code === "42703" || /column.*id/i.test(profileRes.error.message || ""))) {
-        profileRes = await supabase
-          .from("profiles")
-          .select("*")
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (profileRes.data) {
-          profileRes.data = { ...profileRes.data, id: profileRes.data.id || profileRes.data.user_id };
-        }
-      }
-
       const [contactsRes, linksRes, socialsRes] = await Promise.all([
         supabase.from("profile_contacts").select("id,contact_type,value,label,position,is_primary").eq("user_id", userId).order("position"),
         supabase.from("profile_links").select("id,link_type,label,url,position").eq("user_id", userId).order("position"),
@@ -131,18 +119,6 @@ export function useProfile(userId, showToast) {
         .select()
         .single();
 
-      // Fallback legacy: si onConflict id échoue (colonne encore user_id)
-      if (error && (error.code === "42703" || /column.*id|on conflict/i.test(error.message || ""))) {
-        const legacyPayload = { ...payload, user_id: userId };
-        delete legacyPayload.id;
-        const legacy = await supabase
-          .from("profiles")
-          .upsert(legacyPayload, { onConflict: "user_id" })
-          .select()
-          .single();
-        data = legacy.data ? { ...legacy.data, id: legacy.data.user_id || legacy.data.id } : null;
-        error = legacy.error;
-      }
 
       if (error) throw error;
       setProfile(data);
