@@ -10,7 +10,9 @@ export default function App() {
     return <LoadingScreen />;
   }
 
-  // Utilisateur connecté OU mode invité
+  // Afficher la connexion si pas de session.
+  // Le mode invité n'est plus restauré automatiquement depuis localStorage
+  // ni depuis une ancienne session anonyme Supabase.
   if (!user && !isGuest) {
     return <AuthScreen />;
   }
