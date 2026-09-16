@@ -25,12 +25,12 @@ export function NotificationDrawer({ isOpen, onClose, userId }) {
     const { data, error } = await supabase
       .from("notifications")
       .select("id, type, message, source_id, actor_id, read, created_at")
-      .eq("id", userId) // Convention : id = auth.users.id
+      .eq("id", userId)
       .order("created_at", { ascending: false })
       .limit(30);
     
     if (!error) {
-      setItems(data || []);
+      setNotifs(data || []);
     }
     setLoading(false);
   }, [userId]);
@@ -39,7 +39,7 @@ export function NotificationDrawer({ isOpen, onClose, userId }) {
     if (isOpen) load();
   }, [isOpen, load]);
 
-  // ⚡ Realtime : nouvelles notifications instantanées
+  // Realtime : nouvelles notifications instantanées
   useEffect(() => {
     if (!userId) return;
     const channel = supabase
