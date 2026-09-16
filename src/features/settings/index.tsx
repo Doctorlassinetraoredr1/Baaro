@@ -971,8 +971,8 @@ export default function SettingsTab({
         // et n'est jamais copié dans la table publique profiles.
         const { data: profile } = await supabase
           .from("profiles")
-          .select("user_id, display_name, handle, flag, bio, avatar_url, cover_url, country, registered_country, country_changed_at, country_change_available_at, first_name, last_name, birth_date, location, is_verified, created_at")
-          .eq("user_id", data.user.id)
+          .select("id, display_name, handle, flag, bio, avatar_url, cover_url, country, registered_country, country_changed_at, country_change_available_at, first_name, last_name, birth_date, location, is_verified, created_at")
+          .eq("id", data.user.id)
           .maybeSingle();
         if (!cancelled && profile) {
           setUserProfile?.({ ...(userProfile || {}), ...profile });
@@ -989,7 +989,7 @@ export default function SettingsTab({
         const res = await supabase
           .from("user_settings")
           .select("*")
-          .eq("user_id", data.user.id)
+          .eq("id", data.user.id)
           .maybeSingle();
         if (!cancelled && res?.data) {
           setSettings((s) => ({ ...s, ...res.data }));
@@ -1106,7 +1106,7 @@ export default function SettingsTab({
       setEditFlag(derivedFlag);
 
       const profilePayload = {
-        user_id: user.id,
+        id: user.id,
         display_name: name,
         first_name: editFirstName.trim(),
         last_name: editLastName.trim(),
@@ -1123,8 +1123,8 @@ export default function SettingsTab({
       // de ligne dans public.profiles. Un simple UPDATE ne crée rien.
       let { error } = await supabase
         .from("profiles")
-        .upsert(profilePayload, { onConflict: "user_id" })
-        .select("user_id")
+        .upsert(profilePayload, { onConflict: "id" })
+        .select("id")
         .single();
 
       if (error) {
@@ -1137,8 +1137,8 @@ export default function SettingsTab({
           );
           const { error: err2 } = await supabase
             .from("profiles")
-            .upsert({ ...profilePayload, handle: resolved.handle }, { onConflict: "user_id" })
-            .select("user_id")
+            .upsert({ ...profilePayload, handle: resolved.handle }, { onConflict: "id" })
+            .select("id")
             .single();
           if (err2) throw err2;
           finalHandle = resolved.handle;
