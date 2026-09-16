@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { resolve } from 'path';
 
 export default defineConfig({
   plugins: [
@@ -34,7 +35,9 @@ export default defineConfig({
         ]
       },
       workbox: {
+        // Empêche le plugin d'échouer si un type de fichier manque au build
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: ['**/node_modules/**/*', 'sw.js', 'workbox-*.js'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\.supabase\.co\/.*/i,
@@ -67,6 +70,9 @@ export default defineConfig({
   ],
   build: {
     rollupOptions: {
+      input: {
+        main: resolve(__dirname, 'index.html'), // Directif explicite pour l'entrée HTML
+      },
       output: {
         manualChunks: {
           vendor: ['react', 'react-dom'],
