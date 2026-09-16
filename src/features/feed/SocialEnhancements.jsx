@@ -94,7 +94,7 @@ export function PollCard({ postId, userId }) {
             return (
               <button 
                 key={row.option_id} type="button" disabled={busy} onClick={() => vote(row.option_id)}
-                className="relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-xs transition disabled:opacity-60"
+                className="relative w-full overflow-hidden rounded-lg border px-3 py-2 text-left text-xs transition disabled:opacity-60 active:scale-[0.98]"
                 style={{ borderColor: active ? COLORS.borderTeal : COLORS.border, color: COLORS.ivory }}
               >
                 <span className="absolute inset-y-0 left-0 opacity-20" style={{ width: `${p}%`, background: COLORS.teal }} />
@@ -109,7 +109,7 @@ export function PollCard({ postId, userId }) {
         <div className="flex items-center justify-between mt-2">
           <p className="text-[10px]" style={{ color: COLORS.muted }}>{total} vote{total > 1 ? "s" : ""} · Vous pouvez changer votre vote</p>
           {total > 0 && userId && (
-            <button type="button" onClick={openVoters} className="text-[10px] font-bold hover:underline" style={{ color: COLORS.teal }}>
+            <button type="button" onClick={openVoters} className="text-[10px] font-bold hover:underline transition-colors" style={{ color: COLORS.teal }}>
               Voir les votants 👥
             </button>
           )}
@@ -118,10 +118,10 @@ export function PollCard({ postId, userId }) {
 
       {showVoters && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4" onClick={() => setShowVoters(false)}>
-          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md max-h-[80vh] overflow-hidden rounded-2xl border shadow-2xl flex flex-col" style={{ background: COLORS.surface, borderColor: COLORS.borderGold }}>
+          <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md max-h-[80vh] overflow-hidden rounded-2xl border shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-200" style={{ background: COLORS.surface, borderColor: COLORS.borderGold }}>
             <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: COLORS.border }}>
               <h3 className="font-bold text-sm" style={{ color: COLORS.ivory }}>Qui a voté ?</h3>
-              <button type="button" onClick={() => setShowVoters(false)} className="p-1 rounded-lg hover:bg-white/5" style={{ color: COLORS.muted }}><X size={16} /></button>
+              <button type="button" onClick={() => setShowVoters(false)} className="p-1 rounded-lg hover:bg-white/5 transition-colors" style={{ color: COLORS.muted }}><X size={16} /></button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
               {loadingVoters ? (
@@ -161,7 +161,7 @@ export function PollCard({ postId, userId }) {
 }
 
 // ==========================================
-// 2. COMPOSANT SOCIAL POST ENHANCEMENTS
+// 2. COMPOSANT SOCIAL POST ENHANCEMENTS (AVEC ANIMATIONS)
 // ==========================================
 export function SocialPostEnhancements({ post, userId }) {
   const { showToast } = useToast();
@@ -172,6 +172,7 @@ export function SocialPostEnhancements({ post, userId }) {
   const [shareCount, setShareCount] = useState(0);
   const [following, setFollowing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pop, setPop] = useState(false); // 🆕 État pour l'animation de réaction
 
   const load = useCallback(async () => {
     if (!post?.id) return;
@@ -188,22 +189,53 @@ export function SocialPostEnhancements({ post, userId }) {
   }, [post?.id, post?.author_id, userId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // 🆕 Temps réel pour les réactions (mise à jour instantanée si quelqu'un d'autre réagit)
+  useEffect(() => {
+    if (!post?.id) return;
+    const channel = supabase
+      .channel(`reactions-${post.id}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "post_reactions", filter: `post_id=eq.${post.id}` },
+        () => { load(); }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [post?.id, load]);
+
   const current = useMemo(() => REACTIONS.find(x => x.id === reaction), [reaction]);
 
   const chooseReaction = async (value) => {
     if (!userId) return showToast("Connectez-vous pour réagir", "info");
-    if (busy) return; setBusy(true);
+    if (busy) return; 
+    setBusy(true);
+    
+    // 🆕 Déclencher l'animation de "pop"
+    setPop(true);
+    setTimeout(() => setPop(false), 300);
+
     try {
       if (reaction === value) {
         const { error } = await supabase.from("post_reactions").delete().eq("post_id", post.id).eq("id", userId);
-        if (error) throw error; setReaction(null); setReactionCount(n => Math.max(0, n - 1));
+        if (error) throw error; 
+        setReaction(null); 
+        setReactionCount(n => Math.max(0, n - 1));
       } else {
-        const { error } = await supabase.from("post_reactions").upsert({ post_id: post.id, id: userId, reaction: value }, { onConflict: "post_id,id" });
-        if (error) throw error; setReaction(value); if (!reaction) setReactionCount(n => n + 1);
+        const { error } = await supabase.from("post_reactions").upsert(
+          { post_id: post.id, id: userId, reaction: value }, 
+          { onConflict: "post_id,id" }
+        );
+        if (error) throw error; 
+        setReaction(value); 
+        if (!reaction) setReactionCount(n => n + 1);
       }
       setPicker(false);
-    } catch { showToast("Impossible d’enregistrer la réaction", "error"); }
-    finally { setBusy(false); }
+    } catch {
+      showToast("Impossible d’enregistrer la réaction", "error");
+    } finally { 
+      setBusy(false); 
+    }
   };
 
   const bookmark = async () => {
@@ -249,22 +281,50 @@ export function SocialPostEnhancements({ post, userId }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {post.author_id !== userId && (
-        <button type="button" onClick={follow} className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold border" style={{ borderColor: following ? COLORS.borderTeal : COLORS.border, color: following ? COLORS.teal : COLORS.muted }}>
+        <button type="button" onClick={follow} className="flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-[11px] font-bold border transition-all active:scale-95" style={{ borderColor: following ? COLORS.borderTeal : COLORS.border, color: following ? COLORS.teal : COLORS.muted }}>
           {following ? <Check size={13} /> : <UserPlus size={13} />} {following ? "Abonné" : "Suivre"}
         </button>
       )}
+      
       <div className="relative">
-        <button type="button" onClick={() => setPicker(v => !v)} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs border" style={{ borderColor: COLORS.border, color: current ? COLORS.ivory : COLORS.muted }}>
-          <span>{current?.label || "🙂"}</span><span>{reactionCount || "Réagir"}</span>
+        <button 
+          type="button" 
+          onClick={() => setPicker(v => !v)} 
+          className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs border transition-all duration-200 active:scale-95"
+          style={{ borderColor: COLORS.border, color: current ? COLORS.ivory : COLORS.muted }}
+        >
+          {/* 🆕 Animation de l'emoji */}
+          <span className={`inline-block transition-transform duration-300 ${pop ? 'scale-150' : 'scale-100'}`}>
+            {current?.label || "🙂"}
+          </span>
+          {/* 🆕 Animation du texte */}
+          <span className={`transition-all duration-300 ${pop ? 'scale-110 font-bold' : 'scale-100'}`}>
+            {reactionCount || "Réagir"}
+          </span>
         </button>
-        {picker && <div className="absolute bottom-full left-0 z-30 mb-1 flex gap-1 rounded-xl border p-2 shadow-xl" style={{ background: COLORS.surface, borderColor: COLORS.borderGold }}>
-          {REACTIONS.map(x => <button key={x.id} type="button" title={x.title} onClick={() => chooseReaction(x.id)} className="rounded-lg p-1.5 text-lg hover:bg-white/10">{x.label}</button>)}
-        </div>}
+        
+        {picker && (
+          <div className="absolute bottom-full left-0 z-30 mb-1 flex gap-1 rounded-xl border p-2 shadow-xl transition-all duration-200 ease-out" style={{ background: COLORS.surface, borderColor: COLORS.borderGold }}>
+            {REACTIONS.map(x => (
+              <button 
+                key={x.id} 
+                type="button" 
+                title={x.title} 
+                onClick={() => chooseReaction(x.id)} 
+                className="rounded-lg p-1.5 text-lg transition-transform duration-200 hover:scale-125 hover:bg-white/10 active:scale-90"
+              >
+                {x.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
-      <button type="button" onClick={bookmark} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs" style={{ color: saved ? COLORS.gold : COLORS.muted }}>
+
+      <button type="button" onClick={bookmark} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs transition-all active:scale-95" style={{ color: saved ? COLORS.gold : COLORS.muted }}>
         <Bookmark size={15} fill={saved ? "currentColor" : "none"} />{saved ? "Enregistré" : "Enregistrer"}
       </button>
-      <button type="button" onClick={share} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs ml-auto" style={{ color: COLORS.muted }}>
+      
+      <button type="button" onClick={share} className="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs ml-auto transition-all active:scale-95" style={{ color: COLORS.muted }}>
         <Share2 size={15} />{shareCount || "Partager"}
       </button>
     </div>
@@ -272,7 +332,7 @@ export function SocialPostEnhancements({ post, userId }) {
 }
 
 // ==========================================
-// 3. COMPOSANT SOCIAL SUGGESTIONS (L'EXPORT MANQUANT)
+// 3. COMPOSANT SOCIAL SUGGESTIONS
 // ==========================================
 export function SocialSuggestions({ userId, onOpenProfile }) {
   const { showToast } = useToast();
@@ -312,7 +372,7 @@ export function SocialSuggestions({ userId, onOpenProfile }) {
       <div className="flex gap-3 overflow-x-auto pb-1">
         {items.map(item => {
           return (
-            <div key={item.id} className="min-w-[160px] rounded-xl border p-3" style={{ borderColor: COLORS.border, background: COLORS.surface }}>
+            <div key={item.id} className="min-w-[160px] rounded-xl border p-3 transition-all hover:border-amber-400/50" style={{ borderColor: COLORS.border, background: COLORS.surface }}>
               <button type="button" onClick={() => onOpenProfile?.(item.id)} className="flex items-center gap-2 text-left w-full">
                 <div className="w-9 h-9 rounded-full overflow-hidden border flex items-center justify-center" style={{ borderColor: COLORS.borderGold }}>
                   {item.avatar_url ? <img src={item.avatar_url} alt="" className="w-full h-full object-cover" /> : <span style={{ color: COLORS.gold }}>{item.full_name?.charAt(0) || "?"}</span>}
@@ -322,7 +382,7 @@ export function SocialSuggestions({ userId, onOpenProfile }) {
                   <p className="text-[10px] truncate" style={{ color: COLORS.muted }}>{item.handle || ""}</p>
                 </div>
               </button>
-              <button type="button" onClick={() => follow(item)} disabled={busyId === item.id} className="mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold" style={{ background: COLORS.gold, color: COLORS.bg }}>
+              <button type="button" onClick={() => follow(item)} disabled={busyId === item.id} className="mt-2 w-full rounded-lg py-1.5 text-[11px] font-bold transition-all active:scale-95 disabled:opacity-50" style={{ background: COLORS.gold, color: COLORS.bg }}>
                 {busyId === item.id ? "…" : "Suivre"}
               </button>
             </div>
