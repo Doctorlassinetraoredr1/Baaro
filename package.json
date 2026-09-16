@@ -47,33 +47,3 @@
     "vite": "^5.3.1"
   }
 }
-
-2. "api/_shared.js"
-
-Aucune modification du contenu métier n'est nécessaire pour cette erreur. Ton fichier utilise déjà correctement Sentry de façon conditionnelle avec "SENTRY_DSN"; c'est simplement son import qui échoue parce que le package manque.
-
-Après avoir remplacé "package.json", il faut surtout mettre à jour "package-lock.json". Le lockfile actuel ne contient pas "@sentry/node" dans les dépendances racine.
-
-Dans ton projet :
-
-npm install
-
-Puis :
-
-npm run build
-
-et commit/push :
-
-git add package.json package-lock.json
-git commit -m "fix: add sentry node dependency"
-git push
-
-Important
-
-Je ne touche ni à "AuthScreen.jsx", ni à Supabase, ni au système d'inscription, ni au live, ni aux autres fonctionnalités.
-
-Le chemin de correction est donc :
-
-"package.json" → "package-lock.json" → déploiement Vercel → "/api/*" ne plante plus sur "@sentry/node".
-
-Le "package.json" actuel confirme bien que Sentry était absent alors que "_shared.js" l'importe.
