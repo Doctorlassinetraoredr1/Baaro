@@ -11,6 +11,7 @@ import {
   Trash2,
   MoreHorizontal,
   Check,
+  Bell, // 🆕 Ajout de l'icône Bell
 } from "lucide-react";
 import { FeedStories } from "../../components/FeedStories.jsx";
 import { COLORS } from "../../theme.js";
@@ -21,8 +22,8 @@ import { handleDbError } from "../../lib/dbErrors.js";
 import { checkRateLimit, rateLimitMessage } from "../../lib/rateLimit.js";
 import { GuestBanner } from "../../components/GuestBanner.jsx";
 import { TranslateButton } from "../../components/TranslateButton.jsx";
-// 🆕 Import des composants sociaux
 import { PollCard, SocialPostEnhancements, SocialSuggestions } from "./SocialEnhancements.jsx";
+import { NotificationDrawer } from "../../components/NotificationDrawer.jsx"; // 🆕 Import du Drawer
 
 // Taille de page pour le fil. Pagination par CURSEUR (created_at + id)
 const PAGE_SIZE = 20;
@@ -48,7 +49,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
   const [mood, setMood] = useState("");
   const [showPoll, setShowPoll] = useState(false);
   
-  // 🆕 États pour la création de sondage
+  // États pour la création de sondage
   const [pollQuestion, setPollQuestion] = useState("");
   const [pollOptions, setPollOptions] = useState(["", ""]);
   
@@ -63,6 +64,9 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
   const [editingId, setEditingId] = useState(null);
   const [editText, setEditText] = useState("");
   const [savingEdit, setSavingEdit] = useState(false);
+  
+  // 🆕 État pour le drawer de notifications
+  const [notifOpen, setNotifOpen] = useState(false);
 
   // Média en cours de composition
   const [mediaFile, setMediaFile] = useState(null);
@@ -72,6 +76,9 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
 
   const cursorRef = useRef(null);
   const sentinelRef = useRef(null);
+
+  // 🆕 Identifiant utilisateur unifié (disponible tôt pour le rendu)
+  const meId = user?.id || userId;
 
   useEffect(() => {
     const getUser = async () => {
@@ -194,12 +201,11 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
       const rows = await fetchPostsPage(null);
       setPosts(rows);
       updateCursorFromRows(rows);
-      const authorId = user?.id || userId;
-      if (authorId && rows.length) {
+      if (meId && rows.length) {
         const { data: likes } = await supabase
           .from("post_likes")
           .select("post_id")
-          .eq("user_id", authorId)
+          .eq("id", meId) // ✅ Convention : id uniquement
           .in("post_id", rows.map((row) => row.id));
         setLikedPosts(Object.fromEntries((likes || []).map((like) => [like.post_id, true])));
       } else {
@@ -211,12 +217,11 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
         const rows = await fetchPostsPageFallback(null);
         setPosts(rows);
         updateCursorFromRows(rows);
-        const authorId = user?.id || userId;
-        if (authorId && rows.length) {
+        if (meId && rows.length) {
           const { data: likes } = await supabase
             .from("post_likes")
             .select("post_id")
-            .eq("user_id", authorId)
+            .eq("id", meId) // ✅ Convention : id uniquement
             .in("post_id", rows.map((row) => row.id));
           setLikedPosts(Object.fromEntries((likes || []).map((like) => [like.post_id, true])));
         } else {
@@ -230,7 +235,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
     } finally {
       setLoading(false);
     }
-  }, [fetchPostsPage, fetchPostsPageFallback, showToast, user?.id, userId]);
+  }, [fetchPostsPage, fetchPostsPageFallback, showToast, meId]);
 
   const loadMorePosts = useCallback(async () => {
     if (loadingMore || !hasMore || loading || !cursorRef.current) return;
@@ -259,22 +264,21 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
 
   const postIdsKey = posts.map((p) => p.id).join(",");
   useEffect(() => {
-    const me = user?.id || userId;
-    if (!me || !postIdsKey) return;
+    if (!meId || !postIdsKey) return;
     let cancelled = false;
     const ids = postIdsKey.split(",");
     (async () => {
       const { data: likes } = await supabase
         .from("post_likes")
         .select("post_id")
-        .eq("user_id", me)
+        .eq("id", meId) // ✅ Convention : id uniquement
         .in("post_id", ids);
       if (!cancelled && likes) {
         setLikedPosts(Object.fromEntries(likes.map((l) => [l.post_id, true])));
       }
     })();
     return () => { cancelled = true; };
-  }, [user?.id, userId, postIdsKey]);
+  }, [meId, postIdsKey]);
 
   useEffect(() => {
     if (!sentinelRef.current) return;
@@ -348,7 +352,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
       return;
     }
 
-    const authorId = user?.id || userId;
+    const authorId = meId;
     if (!authorId) {
       showToast("Vous devez être connecté", "error");
       return;
@@ -378,7 +382,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
 
       if (error) throw error;
 
-      // 🆕 CRÉATION DU SONDAGE EN BASE DE DONNÉES
+      // CRÉATION DU SONDAGE EN BASE DE DONNÉES
       if (showPoll && hasPollDraft) {
         const cleanOptions = pollOptions.map((x) => x.trim()).filter(Boolean).slice(0, 6);
         const { data: poll, error: pollError } = await supabase
@@ -417,8 +421,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
   };
 
   const handleLike = async (postId) => {
-    const authorId = user?.id || userId;
-    if (!authorId) {
+    if (!meId) {
       showToast("Vous devez être connecté", "error");
       return;
     }
@@ -433,10 +436,10 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
 
     try {
       if (isLiked) {
-        const { error } = await supabase.from("post_likes").delete().eq("post_id", postId).eq("user_id", authorId);
+        const { error } = await supabase.from("post_likes").delete().eq("post_id", postId).eq("id", meId); // ✅ id uniquement
         if (error) throw error;
       } else {
-        const { error } = await supabase.from("post_likes").insert({ post_id: postId, user_id: authorId });
+        const { error } = await supabase.from("post_likes").insert({ post_id: postId, id: meId }); // ✅ id uniquement
         if (error) throw error;
         onRewardPoints?.("like_post", "J'aime distribué", postId);
         showPointsReward?.(2, "J'aime distribué");
@@ -492,20 +495,19 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
       showToast(rateLimitMessage(limit.retryAfterSec), "error");
       return;
     }
-    const authorId = user?.id || userId;
-    if (!authorId) {
+    if (!meId) {
       showToast("Vous devez être connecté", "error");
       return;
     }
     try {
       const { data: createdComment, error } = await supabase
         .from("comments")
-        .insert({ post_id: postId, author_id: authorId, text })
+        .insert({ post_id: postId, author_id: meId, text })
         .select("id")
         .single();
       if (error) throw error;
 
-      const newCmt = { id: `c_${Date.now()}`, author: "Vous", text, author_id: authorId };
+      const newCmt = { id: `c_${Date.now()}`, author: "Vous", text, author_id: meId };
       setCommentsMap((prev) => ({ ...prev, [postId]: [...(prev[postId] || []), newCmt] }));
       setPosts((prev) => prev.map((p) => p.id === postId ? { ...p, comments_count: (p.comments_count || 0) + 1 } : p));
       setNewCommentText((prev) => ({ ...prev, [postId]: "" }));
@@ -516,8 +518,6 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
       handleDbError(error, showToast, "Impossible de commenter");
     }
   };
-
-  const meId = user?.id || userId;
 
   const handleDeletePost = async (postId) => {
     if (!meId) return showToast("Connecte-toi", "error");
@@ -590,7 +590,22 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
     <div className="flex flex-col gap-4 max-w-2xl mx-auto w-full pb-20">
       <FeedStories userId={userId} onRewardPoints={onRewardPoints} />
       
-      {/* 🆕 Suggestions de comptes (visible uniquement si connecté) */}
+      {/* 🔔 Notifications (visible uniquement si connecté) */}
+      {meId && (
+        <div className="flex justify-end">
+          <button
+            onClick={() => setNotifOpen(true)}
+            className="relative p-2 rounded-xl border transition hover:bg-white/5"
+            style={{ borderColor: COLORS.border, color: COLORS.ivory }}
+            aria-label="Notifications"
+          >
+            <Bell size={20} />
+          </button>
+          <NotificationDrawer isOpen={notifOpen} onClose={() => setNotifOpen(false)} userId={meId} />
+        </div>
+      )}
+
+      {/* Suggestions de comptes (visible uniquement si connecté) */}
       {meId && <SocialSuggestions userId={meId} onOpenProfile={onOpenProfile} />}
 
       <form onSubmit={handleCreatePost} className="glass-card rounded-2xl p-4 shadow-xl border" style={{ borderColor: COLORS.borderGold }}>
@@ -621,7 +636,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
           </div>
         )}
 
-        {/* 🆕 Formulaire de création de sondage complet */}
+        {/* Formulaire de création de sondage complet */}
         {showPoll && (
           <div className="mb-3 p-3 rounded-xl border" style={{ background: COLORS.surface, borderColor: COLORS.borderTeal }}>
             <div className="flex items-center justify-between gap-2 mb-2">
@@ -768,7 +783,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
                   </div>
                 )}
 
-                {/* 🆕 Barre d'actions unifiée avec Sondage, Réactions, Commentaires et Traduction */}
+                {/* Barre d'actions unifiée avec Sondage, Réactions, Commentaires et Traduction */}
                 <div className="flex flex-col gap-3 pt-2 border-t" style={{ borderColor: COLORS.border }}>
                   {/* 1. Sondage (s'affiche uniquement si le post en a un) */}
                   <PollCard postId={post.id} userId={meId} />
