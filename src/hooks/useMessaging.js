@@ -64,11 +64,24 @@ export function useMessaging(conversationId, currentUserId, recipientId) {
     const load = async () => {
       setLoading(true);
 
-      const { data, error } = await supabase
+      // Jointure profiles via sender_id → profiles.id (identité unique)
+      let { data, error } = await supabase
         .from("messages")
         .select("*, sender:sender_id(display_name, flag, avatar_url)")
         .eq("conversation_id", conversationId)
         .order("created_at", { ascending: true });
+
+      // Fallback sans embed si FK profiles absente / RLS
+      if (error) {
+        console.warn("[useMessaging] jointure sender échouée, fallback:", error.message);
+        const plain = await supabase
+          .from("messages")
+          .select("*")
+          .eq("conversation_id", conversationId)
+          .order("created_at", { ascending: true });
+        data = plain.data;
+        error = plain.error;
+      }
 
       if (error) {
         console.error("[useMessaging] fetch:", error);

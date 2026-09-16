@@ -24,8 +24,25 @@ export function useProfile(userId, showToast) {
     }
     setLoading(true);
     try {
-      const [profileRes, contactsRes, linksRes, socialsRes] = await Promise.all([
-        supabase.from("profiles").select(PROFILE_SELECT).eq("id", userId).maybeSingle(),
+      let profileRes = await supabase
+        .from("profiles")
+        .select(PROFILE_SELECT)
+        .eq("id", userId)
+        .maybeSingle();
+
+      // Compatibilité temporaire si la colonne s'appelle encore user_id
+      if (profileRes.error && (profileRes.error.code === "42703" || /column.*id/i.test(profileRes.error.message || ""))) {
+        profileRes = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("user_id", userId)
+          .maybeSingle();
+        if (profileRes.data) {
+          profileRes.data = { ...profileRes.data, id: profileRes.data.id || profileRes.data.user_id };
+        }
+      }
+
+      const [contactsRes, linksRes, socialsRes] = await Promise.all([
         supabase.from("profile_contacts").select("id,contact_type,value,label,position,is_primary").eq("user_id", userId).order("position"),
         supabase.from("profile_links").select("id,link_type,label,url,position").eq("user_id", userId).order("position"),
         supabase.from("profile_social_links").select("id,platform,username,url,position").eq("user_id", userId).order("platform"),
@@ -36,7 +53,32 @@ export function useProfile(userId, showToast) {
       if (linksRes.error && linksRes.error.code !== "42P01") throw linksRes.error;
       if (socialsRes.error && socialsRes.error.code !== "42P01") throw socialsRes.error;
 
-      setProfile(profileRes.data || {
+      // Créer le profil s'il n'existe pas (persistance)
+      let profileData = profileRes.data;
+      if (!profileData) {
+        const fallback = {
+          id: userId,
+          display_name: "Nouveau membre",
+          handle: null,
+          flag: "🌍",
+          bio: "",
+          avatar_url: null,
+          cover_url: null,
+          updated_at: new Date().toISOString(),
+        };
+        const { data: created, error: createErr } = await supabase
+          .from("profiles")
+          .upsert(fallback, { onConflict: "id" })
+          .select(PROFILE_SELECT)
+          .single();
+        if (createErr) {
+          console.error("[BAARO] Création profil échouée:", createErr);
+        } else {
+          profileData = created;
+        }
+      }
+
+      setProfile(profileData || {
         id: userId,
         display_name: "Nouveau membre",
         handle: null,
@@ -83,11 +125,24 @@ export function useProfile(userId, showToast) {
         updated_at: new Date().toISOString(),
       };
 
-      const { data, error } = await supabase
+      let { data, error } = await supabase
         .from("profiles")
         .upsert(payload, { onConflict: "id" })
         .select()
         .single();
+
+      // Fallback legacy: si onConflict id échoue (colonne encore user_id)
+      if (error && (error.code === "42703" || /column.*id|on conflict/i.test(error.message || ""))) {
+        const legacyPayload = { ...payload, user_id: userId };
+        delete legacyPayload.id;
+        const legacy = await supabase
+          .from("profiles")
+          .upsert(legacyPayload, { onConflict: "user_id" })
+          .select()
+          .single();
+        data = legacy.data ? { ...legacy.data, id: legacy.data.user_id || legacy.data.id } : null;
+        error = legacy.error;
+      }
 
       if (error) throw error;
       setProfile(data);
