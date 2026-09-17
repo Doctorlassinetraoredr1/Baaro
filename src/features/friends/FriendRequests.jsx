@@ -72,11 +72,9 @@ export const FriendRequests = ({ onOpenProfile }) => {
         .eq('status', 'pending');
 
       if (error) throw error;
-      alert('✅ Demande acceptée !');
       fetchRequests();
     } catch (error) {
       console.error('Erreur acceptation:', error);
-      alert('❌ Erreur lors de l\'acceptation');
     }
   };
 
@@ -90,11 +88,9 @@ export const FriendRequests = ({ onOpenProfile }) => {
         .eq('status', 'pending');
 
       if (error) throw error;
-      alert('Demande rejetée');
       fetchRequests();
     } catch (error) {
       console.error('Erreur rejet:', error);
-      alert('❌ Erreur lors du rejet');
     }
   };
 
@@ -120,6 +116,7 @@ export const FriendRequests = ({ onOpenProfile }) => {
       <h3 className="text-sm font-bold mb-3 uppercase tracking-wider" style={{ color: COLORS.muted }}>
         Demandes d'amis ({requests.length})
       </h3>
+
       <div className="space-y-2">
         {requests.map((request) => (
           <div
@@ -137,7 +134,7 @@ export const FriendRequests = ({ onOpenProfile }) => {
             />
             <div className="flex-1 min-w-0">
               <div className="font-semibold text-sm truncate" style={{ color: COLORS.ivory }}>
-                {request.profile?.display_name || 'Membre'} {request.profile?.flag}
+                {request.profile?.display_name || 'Membre'}{request.profile?.flag}
               </div>
               <div className="text-xs truncate" style={{ color: COLORS.muted }}>
                 {request.profile?.handle?.startsWith('@') ? request.profile.handle : `@${request.profile?.handle || 'membre'}`}
