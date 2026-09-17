@@ -789,7 +789,14 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
         )}
       </div>
       <div className="min-w-0 flex-1">
-        <p className="font-semibold text-sm truncate" style={{ color: COLORS.ivory }}>
+        <p
+          className="font-semibold text-sm truncate hover:underline"
+          style={{ color: COLORS.ivory }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpenProfile?.(user.id);
+          }}
+        >
           {user.display_name || "Membre"}
         </p>
         <p className="text-xs truncate" style={{ color: COLORS.muted }}>
@@ -1267,7 +1274,14 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-sm truncate" style={{ color: COLORS.ivory }}>
+                  <p
+                    className="font-semibold text-sm truncate hover:underline"
+                    style={{ color: COLORS.ivory }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onOpenProfile?.(c.otherUserId);
+                    }}
+                  >
                     {c.otherUserName}
                   </p>
                   <p className="text-xs truncate" style={{ color: COLORS.muted }}>
