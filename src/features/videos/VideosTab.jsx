@@ -1,3 +1,4 @@
+import { VideoTranslateControls } from "../../components/VideoTranslateControls.jsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
@@ -973,6 +974,7 @@ export function VideosTab({ onRewardPoints, onExit }) {
                     <p className={`text-sm font-medium leading-snug ${captionOpen ? "" : "line-clamp-2"}`}>
                       {caption || "Vidéo BAARO"}
                     </p>
+
                     {caption.length > 90 && (
                       <span className="text-[10px] text-white/50">
                         {captionOpen ? "Réduire" : "Plus"}
@@ -980,6 +982,12 @@ export function VideosTab({ onRewardPoints, onExit }) {
                     )}
                   </button>
 
+                  <div className="mt-2">
+                    <VideoTranslateControls
+                      mediaUrl={video.media_url || video.video_url}
+                      videoId={video.id}
+                    />
+                  </div>
                   {video.sound_id && (
                     <div className="mt-2 flex items-center gap-1.5 text-[11px] text-white/65">
                       <Music2 size={13} />
