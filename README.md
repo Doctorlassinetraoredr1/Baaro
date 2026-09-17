@@ -1,28 +1,114 @@
-# BAARO — Social Complete v2
+# BAARO
 
-Ce pack termine le chantier Social sans virtualisation.
+Réseau social mondial avec portefeuille de points, crypto interne (BARO Coin),
+messagerie, marketplace, lives, abonnements et assistant IA intégré.
 
-## Inclus
-- Sondages fonctionnels : création, 2–6 choix, vote, changement de vote, résultats.
-- Réactions avancées : ❤️ 😂 😮 😢 😡 🤝.
-- Favoris/enregistrements.
-- Partages persistants avec compteur réel.
-- Notifications sociales enrichies + realtime.
-- Abonnements : suivre/ne plus suivre.
-- Suggestions de comptes basées sur abonnements/mutualité + audience.
-- Score de fil intelligent côté Supabase (`social_feed_score`).
-- Anti-spam serveur sur les principales interactions.
-- Indexes pour le feed et les interactions.
-- Aucun nouveau fichier dans `api/`.
+Données (points, transactions, avoirs crypto, social) stockées dans Postgres via Supabase.
+Compte anonyme créé automatiquement pour chaque visiteur (auth e-mail possible ensuite).
 
-## Installation
-1. Appliquer `supabase/migrations/013_social_complete.sql` dans Supabase.
-2. Copier `src/features/feed/SocialEnhancements.jsx`.
-3. À la racine du projet, exécuter :
-   `node scripts/apply_social_complete.mjs`
-4. Vérifier :
-   `npm run build`
-   `npm run check:production`
+**Site** : [baaro-xi.vercel.app](https://baaro-xi.vercel.app)
 
-Le script crée d'abord `FeedTab.jsx.social-complete.bak`.
-Le pack ne supprime aucune fonctionnalité Live, Marketplace, IA ou autre.
+## Stack
+
+| Couche | Techno |
+|--------|--------|
+| Frontend | React 18 + Vite + Tailwind + PWA |
+| Backend data | Supabase (Postgres, Auth, Realtime, Storage, RLS) |
+| API | Vercel Serverless (`api/`) |
+| Live | Daily.co + WebRTC |
+| Mobile | Capacitor (Android / iOS) |
+| IA | Proxy multi-fournisseurs (`/api/chat`, `/api/ai`) |
+
+## Fonctionnalités principales
+
+- Fil social : posts, réactions, sondages, favoris, partages, score de feed
+- Vidéos & Stories
+- Messagerie (chiffrement E2E côté client) + appels
+- Lives (rôles, cadeaux, multi-host)
+- Portefeuille points + conversion BARO (écritures **uniquement** via `/api/wallet`)
+- Marketplace / boutiques / commandes (prix recalculés serveur)
+- Annuaire Entreprises & services
+- Assistant IA
+- Notifications realtime
+- Mode hors-ligne Nearby (Android natif uniquement)
+- Protection anti-fraude : Turnstile, limite appareils, plafonds gains, âge min. cashout
+
+## Démarrage rapide
+
+```bash
+npm install
+cp .env.example .env.local
+# Renseigner VITE_SUPABASE_*, SUPABASE_SERVICE_ROLE_KEY, etc.
+npm run dev
+```
+
+Ouvre `http://localhost:5173`.
+
+### Migrations Supabase
+
+Appliquer les fichiers de `supabase/migrations/` **dans l’ordre numérique** sur un projet de staging d’abord.
+Les scripts legacy hors ordre (`legacy/`) ne doivent plus être rejoués sur une base déjà migrée.
+
+Garde-fou avant prod :
+
+```bash
+npm run check:production
+npm run audit:security
+npm run build
+```
+
+### Déploiement Vercel
+
+Variables obligatoires (exemples dans `.env.example` / `.env.production.example`) :
+
+- `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`
+- `SUPABASE_SERVICE_ROLE_KEY` (**jamais** préfixée `VITE_`)
+- `ALLOWED_ORIGINS`, `PUBLIC_APP_URL`
+- Clés IA / paiement / Daily selon les modules activés
+
+Les rewrites legacy `/create-payment`, `/payment-webhook`, `/stripe-webhook` pointent vers `/api/payments` et `/api/webhooks`.
+
+## Structure utile
+
+```
+api/                 # Serverless (wallet, chat, payments, webhooks, …)
+src/app/             # Coque principale (MainShell, tabs lazy)
+src/features/        # Feed, messages, wallet, lives, shop, …
+src/components/      # UI partagée
+src/hooks/ src/lib/  # Données, crypto E2E, rate-limit client, …
+supabase/migrations/ # Schéma + RLS (source de vérité)
+scripts/             # check:production, audit:security, …
+docs/                # Audits, checklist prod, roadmaps
+```
+
+## Règles de non-régression
+
+1. **Wallet** : jamais d’écriture directe client sur `wallets` / `transactions` / `crypto_holdings`.
+2. **Prix marketplace** : toujours recalculés côté serveur (`create_order_secure` / équivalent).
+3. **Pas de virtualisation de liste** ajoutée sans validation produit explicite.
+4. **Pas de nouveau fichier dans `api/`** au-delà de la limite documentée sans revue (voir `docs/API-12-FILES-PLAN.md`).
+5. Toute migration SECURITY DEFINER doit fixer `search_path` et être testée avec 2 comptes distincts.
+6. Les fonctionnalités non branchées (ex. cashout Stripe désactivé) restent en 503 / message clair — ne pas les présenter comme actives.
+
+## Scripts npm
+
+| Script | Rôle |
+|--------|------|
+| `npm run dev` | Dev local |
+| `npm run build` | Build production |
+| `npm run check:production` | Fichiers / scripts critiques |
+| `npm run audit:security` | Scan statique sécurité |
+| `npm run check:e2e` | Préparation E2E |
+| `npm run cap:sync` | Sync Capacitor après build |
+
+## Documentation
+
+- `docs/PRODUCTION-CHECKLIST.md` — checklist mise en prod
+- `docs/SECURITY.md` — modèle de menace wallet / auth
+- `docs/REMAINING-OPS.md` — Upstash, Stripe, CinetPay, observabilité
+- `docs/BAARO-2.0-ALL-ROADMAP.md` — consolidation long terme
+- `docs/AUDIT_ET_AMELIORATIONS_2026-09-11.md` — dernier audit marketplace / entreprises
+
+## Licence / contribution
+
+Dépôt public. Avant toute PR : `npm run build` + `npm run check:production` + `npm run audit:security`.
