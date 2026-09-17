@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { 
   Home, 
   Video, 
@@ -39,6 +40,7 @@ const MORE_ITEMS = [
 ];
 
 export function Navigation({ activeTab, setActiveTab }) {
+  const { t } = useTranslation();
   const [moreOpen, setMoreOpen] = useState(false);
   const { user, isGuest } = useApp();
 
@@ -66,7 +68,7 @@ export function Navigation({ activeTab, setActiveTab }) {
               style={{ color: isActive ? COLORS.gold : COLORS.ivory }}
             >
               <Icon size={20} />
-              <span className="font-medium text-sm">{item.label}</span>
+              <span className="font-medium text-sm">{t(`nav.${item.id}`, item.label)}</span>
               {item.badge && (
                 <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full" style={{ background: COLORS.gold, color: COLORS.bg }}>
                   {item.badge}
@@ -84,7 +86,7 @@ export function Navigation({ activeTab, setActiveTab }) {
           style={{ color: COLORS.muted }}
         >
           <Menu size={20} />
-          <span className="font-medium text-sm">Plus</span>
+          <span className="font-medium text-sm">{t("nav.more", "Plus")}</span>
         </button>
       </nav>
 
@@ -102,7 +104,7 @@ export function Navigation({ activeTab, setActiveTab }) {
                 style={{ color: isActive ? COLORS.gold : COLORS.muted }}
               >
                 <Icon size={20} />
-                <span className="text-[10px] font-medium">{item.label}</span>
+                <span className="text-[10px] font-medium">{t(`nav.${item.id}`, item.label)}</span>
               </button>
             );
           })}
@@ -113,7 +115,7 @@ export function Navigation({ activeTab, setActiveTab }) {
             style={{ color: activeTab === "plus" ? COLORS.gold : COLORS.muted }}
           >
             <Menu size={20} />
-            <span className="text-[10px] font-medium">Plus</span>
+            <span className="text-[10px] font-medium">{t("nav.more", "Plus")}</span>
           </button>
         </div>
       </nav>
@@ -135,7 +137,7 @@ export function Navigation({ activeTab, setActiveTab }) {
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-sm" style={{ color: COLORS.ivory }}>
-                Plus
+                {t("nav.more", "Plus")}
               </h3>
               <button
                 type="button"
@@ -168,7 +170,7 @@ export function Navigation({ activeTab, setActiveTab }) {
                   >
                     <Icon size={22} />
                     <span className="text-[11px] font-medium text-center leading-tight">
-                      {item.label}
+                      {t(`nav.${item.id}`, item.label)}
                     </span>
                   </button>
                 );
