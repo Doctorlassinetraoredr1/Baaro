@@ -40,6 +40,32 @@
   "common": {
     "cancel": "إلغاء",
     "confirm": "تأكيد",
-    "loading": "جارٍ التحميل..."
+    "loading": "جارٍ التحميل...",
+    "save": "حفظ",
+    "back": "رجوع",
+    "error": "خطأ",
+    "success": "نجاح",
+    "search": "بحث"
+  },
+  "nav": {
+    "feed": "الخلاصة",
+    "videos": "فيديوهات",
+    "messages": "دردشة",
+    "debates": "بث مباشر",
+    "shop": "متجر",
+    "discover": "اكتشف",
+    "companies": "شركات",
+    "community": "مجتمع",
+    "friends": "أصدقاء",
+    "crypto": "BARO",
+    "wallet": "محفظة",
+    "offline": "بدون إنترنت",
+    "assistant": "مساعد ذكي",
+    "settings": "الإعدادات",
+    "more": "المزيد"
+  },
+  "app": {
+    "name": "BAARO",
+    "tagline": "شبكة اجتماعية عالمية"
   }
 }

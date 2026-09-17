@@ -40,6 +40,32 @@
   "common": {
     "cancel": "Annuler",
     "confirm": "Confirmer",
-    "loading": "Chargement..."
+    "loading": "Chargement...",
+    "save": "Enregistrer",
+    "back": "Retour",
+    "error": "Erreur",
+    "success": "Succès",
+    "search": "Rechercher"
+  },
+  "nav": {
+    "feed": "Fil",
+    "videos": "Vidéos",
+    "messages": "Chat",
+    "debates": "Débats",
+    "shop": "Shop",
+    "discover": "Découvrir",
+    "companies": "Entreprises",
+    "community": "Communauté",
+    "friends": "Amis",
+    "crypto": "BARO",
+    "wallet": "Portefeuille",
+    "offline": "Hors-ligne",
+    "assistant": "IA Assistant",
+    "settings": "Réglages",
+    "more": "Plus"
+  },
+  "app": {
+    "name": "BAARO",
+    "tagline": "Réseau social mondial"
   }
 }
