@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Phone, Globe, Mail } from "lucide-react";
+import { Phone, Globe, Mail } from "lucide-react";
+import { BackBar } from "./BackBar.jsx";
 import { COLORS } from "../theme.js";
 import {
   fetchCompanyById,
@@ -68,14 +69,7 @@ export default function CompanyDetail({ companyId, userId, onBack }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <button
-        type="button"
-        onClick={onBack}
-        className="flex items-center gap-1 text-sm self-start"
-        style={{ color: COLORS.muted }}
-      >
-        <ArrowLeft size={16} /> Retour
-      </button>
+      <BackBar title={company?.name || "Entreprise"} onBack={onBack} />
 
       <div
         className="rounded-2xl border p-4"

@@ -1,3 +1,4 @@
+import { BackBar } from "./BackBar.jsx";
 import { COLORS } from "../theme.js";
 
 /**
@@ -10,20 +11,14 @@ export function PrivacyPage({ onBack }) {
       className="max-w-2xl mx-auto w-full pb-28 px-3"
       style={{ color: COLORS.ivory }}
     >
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold" style={{ color: COLORS.gold }}>
+      {onBack ? (
+        <BackBar title="Confidentialité — BAARO" onBack={onBack} />
+      ) : (
+        <h1 className="text-xl font-bold mb-6" style={{ color: COLORS.gold }}>
           Confidentialité — BAARO
         </h1>
-        {onBack && (
-          <button
-            onClick={onBack}
-            className="text-xs underline"
-            style={{ color: COLORS.teal }}
-          >
-            Retour
-          </button>
-        )}
-      </div>
+      )}
+      <div className="mb-4" />
 
       <div className="space-y-5 text-sm leading-relaxed" style={{ color: COLORS.mutedLight }}>
         <section>

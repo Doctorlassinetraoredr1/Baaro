@@ -1,96 +1,88 @@
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+/**
+ * Rendu léger du markdown BAARO (sans dépendance react-markdown).
+ * Supporte : **gras**, *italique*, ++souligné++, listes simples, liens [txt](url), URLs nues.
+ */
 import { COLORS } from "../theme.js";
 
-/**
- * Rendu professionnel et sécurisé des publications.
- * Supporte Markdown (gras, italique, listes, liens) + souligné via ++texte++
- * Auto-lien des URLs et des liens de groupes Baaro.
- */
+function escapeHtml(s) {
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function formatInline(text) {
+  let s = escapeHtml(text);
+  // links [label](url)
+  s = s.replace(
+    /\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g,
+    '<a href="$2" target="_blank" rel="noopener noreferrer" class="underline" style="color:#2DBFA6">$1</a>'
+  );
+  // bare urls
+  s = s.replace(
+    /(^|[\s])(https?:\/\/[^\s<]+)/g,
+    '$1<a href="$2" target="_blank" rel="noopener noreferrer" class="underline" style="color:#2DBFA6">$2</a>'
+  );
+  s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+  s = s.replace(/\+\+([^+]+)\+\+/g, "<u>$1</u>");
+  return s;
+}
+
+function toHtml(content) {
+  const lines = String(content || "").split("\n");
+  const out = [];
+  let listType = null; // ul | ol
+
+  const closeList = () => {
+    if (listType) {
+      out.push(listType === "ol" ? "</ol>" : "</ul>");
+      listType = null;
+    }
+  };
+
+  for (const line of lines) {
+    const ul = line.match(/^\s*[-*]\s+(.+)$/);
+    const ol = line.match(/^\s*\d+\.\s+(.+)$/);
+    if (ul) {
+      if (listType !== "ul") {
+        closeList();
+        out.push('<ul class="list-disc list-inside mb-2 space-y-1">');
+        listType = "ul";
+      }
+      out.push(`<li>${formatInline(ul[1])}</li>`);
+      continue;
+    }
+    if (ol) {
+      if (listType !== "ol") {
+        closeList();
+        out.push('<ol class="list-decimal list-inside mb-2 space-y-1">');
+        listType = "ol";
+      }
+      out.push(`<li>${formatInline(ol[1])}</li>`);
+      continue;
+    }
+    closeList();
+    if (!line.trim()) {
+      out.push("<br/>");
+    } else {
+      out.push(`<p class="mb-2 last:mb-0 whitespace-pre-wrap">${formatInline(line)}</p>`);
+    }
+  }
+  closeList();
+  return out.join("");
+}
+
 export function RichTextRenderer({ content, className = "" }) {
   if (!content) return null;
-
-  // Convertit la syntaxe souligné ++texte++ en <u>
-  const withUnderline = content.replace(/\+\+([^\n]+?)\+\+/g, "<u>$1</u>");
-
   return (
     <div
       className={`rich-text text-sm leading-relaxed ${className}`}
       style={{ color: COLORS.ivory }}
-    >
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
-          p: ({ children }) => (
-            <p className="mb-2 last:mb-0 whitespace-pre-wrap">{children}</p>
-          ),
-          strong: ({ children }) => (
-            <strong className="font-bold" style={{ color: COLORS.ivory }}>
-              {children}
-            </strong>
-          ),
-          em: ({ children }) => <em className="italic">{children}</em>,
-          u: ({ children }) => <u className="underline">{children}</u>,
-          ul: ({ children }) => (
-            <ul className="list-disc list-inside mb-2 space-y-1 pl-1">{children}</ul>
-          ),
-          ol: ({ children }) => (
-            <ol className="list-decimal list-inside mb-2 space-y-1 pl-1">{children}</ol>
-          ),
-          li: ({ children }) => <li className="leading-relaxed">{children}</li>,
-          a: ({ href, children }) => {
-            const isBaaroGroup =
-              href &&
-              (href.includes("/g/") ||
-                href.includes("baaro.app/g") ||
-                href.includes("baaro-xi.vercel.app/g") ||
-                href.startsWith("/g/") ||
-                href.startsWith("?group="));
-
-            const isInternal = href?.startsWith("/") || href?.startsWith("?");
-
-            return (
-              <a
-                href={href}
-                target={isInternal ? undefined : "_blank"}
-                rel={isInternal ? undefined : "noopener noreferrer"}
-                className="underline underline-offset-2 hover:opacity-90 transition-opacity"
-                style={{
-                  color: isBaaroGroup ? COLORS.teal : COLORS.gold,
-                }}
-              >
-                {children}
-              </a>
-            );
-          },
-          code: ({ children }) => (
-            <code
-              className="px-1.5 py-0.5 rounded text-xs font-mono"
-              style={{ background: COLORS.surface2, color: COLORS.goldLight }}
-            >
-              {children}
-            </code>
-          ),
-          pre: ({ children }) => (
-            <pre
-              className="p-3 rounded-xl overflow-x-auto text-xs mb-2"
-              style={{ background: COLORS.surface2 }}
-            >
-              {children}
-            </pre>
-          ),
-          blockquote: ({ children }) => (
-            <blockquote
-              className="border-l-4 pl-3 my-2 italic"
-              style={{ borderColor: COLORS.gold, color: COLORS.mutedLight }}
-            >
-              {children}
-            </blockquote>
-          ),
-        }}
-      >
-        {withUnderline}
-      </ReactMarkdown>
-    </div>
+      dangerouslySetInnerHTML={{ __html: toHtml(content) }}
+    />
   );
 }
+
+export default RichTextRenderer;
