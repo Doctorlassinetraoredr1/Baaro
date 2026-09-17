@@ -78,7 +78,14 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
   };
 
   const handleCreate = async () => {
-    if (!title.trim() || !topic.trim() || !currentUserId) return;
+    if (!title.trim() || !topic.trim()) {
+      setError("Indique un titre et un thème.");
+      return;
+    }
+    if (!currentUserId) {
+      setError("Session introuvable. Recharge la page ou reconnecte-toi.");
+      return;
+    }
     setLoading(true);
     setError(null);
 

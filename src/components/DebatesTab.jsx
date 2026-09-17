@@ -165,7 +165,8 @@ function SkeletonCard() {
   );
 }
 
-export default function DebatesTab({ currentUserId, onRewardPoints }) {
+export default function DebatesTab({ id, currentUserId, onRewardPoints }) {
+  const userId = currentUserId || id;
   const [debates, setDebates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -250,7 +251,7 @@ export default function DebatesTab({ currentUserId, onRewardPoints }) {
     return (
       <DebateRoom
         inviteCode={activeDebateCode}
-        currentUserId={currentUserId}
+        currentUserId={userId}
         onBack={() => {
           setActiveDebateCode(null);
           fetchDebates();
@@ -413,7 +414,7 @@ export default function DebatesTab({ currentUserId, onRewardPoints }) {
       <CreateDebateModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        currentUserId={currentUserId}
+        currentUserId={userId}
         onSuccess={(room) => {
           setIsCreateOpen(false);
           if (room?.invite_code) setActiveDebateCode(room.invite_code);
