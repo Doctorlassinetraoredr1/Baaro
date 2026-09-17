@@ -417,7 +417,12 @@ export default function DebatesTab({ id, currentUserId, onRewardPoints }) {
         currentUserId={userId}
         onSuccess={(room) => {
           setIsCreateOpen(false);
-          if (room?.invite_code) setActiveDebateCode(room.invite_code);
+          if (room?.invite_code) {
+            setActiveDebateCode(room.invite_code);
+          } else if (room?.id) {
+            // ouvrir par id si pas de code
+            setActiveDebateCode(room.id);
+          }
           fetchDebates();
         }}
       />

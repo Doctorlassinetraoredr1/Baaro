@@ -77,13 +77,13 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
     return m;
   };
 
-  const handleCreate = async () => {
+  const handleCreate = async (e) => {
+    if (e) {
+      e.preventDefault?.();
+      e.stopPropagation?.();
+    }
     if (!title.trim() || !topic.trim()) {
       setError("Indique un titre et un thème.");
-      return;
-    }
-    if (!currentUserId) {
-      setError("Session introuvable. Recharge la page ou reconnecte-toi.");
       return;
     }
     setLoading(true);
@@ -96,6 +96,11 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
 
       if (!session?.access_token) {
         throw new Error("Session expirée. Rechargez la page.");
+      }
+
+      const uid = currentUserId || session.user?.id;
+      if (!uid) {
+        throw new Error("Session introuvable. Recharge la page ou reconnecte-toi.");
       }
 
       let room = null;
@@ -171,7 +176,7 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
             topic: topicWithHybrid,
             mode: finalMode,
             status: "active",
-            host_id: currentUserId,
+            host_id: uid,
           };
         }
         room = updatedRoom;
@@ -185,7 +190,7 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
             topic: topic.trim(),
             mode: "text",
             invite_code: inviteCode,
-            host_id: currentUserId,
+            host_id: uid,
             status: "active",
             max_participants: 12,
           })
@@ -195,11 +200,20 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
         if (roomError) throw roomError;
         room = newRoom;
 
-        await supabase.from("debate_participants").upsert({
+        const { error: partErr } = await supabase.from("debate_participants").upsert({
           room_id: room.id,
-          user_id: currentUserId,
+          user_id: uid,
           role: "host",
         });
+        if (partErr) {
+          // schéma alternatif id au lieu de user_id
+          const { error: partErr2 } = await supabase.from("debate_participants").upsert({
+            room_id: room.id,
+            id: uid,
+            role: "host",
+          });
+          if (partErr2) console.warn("participant:", partErr2.message || partErr.message);
+        }
       }
 
       onSuccess?.(room);
@@ -209,7 +223,13 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
       setMode("hybrid");
     } catch (err) {
       console.error("Création débat:", err);
-      setError(err.message || "Impossible de créer le débat");
+      const msg =
+        err?.message ||
+        err?.error_description ||
+        (typeof err === "string" ? err : null) ||
+        "Impossible de créer le débat";
+      const detail = err?.details || err?.hint || "";
+      setError(detail ? `${msg} — ${detail}` : msg);
     } finally {
       setLoading(false);
     }
@@ -362,6 +382,7 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
         </div>
 
         <button
+          type="button"
           onClick={handleCreate}
           disabled={!canSubmit}
           className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition disabled:opacity-40 active:scale-[0.98]"
