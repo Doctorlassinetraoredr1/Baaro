@@ -12,12 +12,11 @@ import {
   MessageSquare
 } from 'lucide-react';
 import { useCommunity, useChannelMessages, useVoiceChannel } from '../hooks/useCommunity';
-import FollowButton from '../friends/FollowButton.jsx'; // Ajuste le chemin si nécessaire
-import { COLORS } from '../../theme.js'; // Assure-toi que le chemin est bon
+import { FollowButton, FriendsTab, FriendRequests } from '../features/friends/index.js';
+import { COLORS } from '../theme.js';
 
-export default function CommunityTab({ id }) {
-  // id = ID de l'utilisateur connecté (plus de userId)
-  const { friends, allUsers, groups, createGroup, createChannel, deleteChannel, banMember, updateMemberRole, loadUsers } = useCommunity(id);
+export default function CommunityTab({ id, onOpenProfile }) {
+  const { friends, allUsers, groups, createGroup, createChannel, deleteChannel, banMember, updateMemberRole, loadUsers, loading } = useCommunity(id);
   
   const [activeTab, setActiveTab] = useState('groups');
   const [selectedGroup, setSelectedGroup] = useState(null);
@@ -32,11 +31,9 @@ export default function CommunityTab({ id }) {
   const [msgText, setMsgText] = useState('');
   const messagesEndRef = useRef(null);
 
-  // ✅ CORRECTION CRITIQUE : utilisation de 'id' au lieu de 'user_id'
   const myRole = selectedGroup?.members?.find(m => m.id === id)?.role || selectedGroup?.myRole;
   const isAdmin = ['owner', 'admin'].includes(myRole);
 
-  // Scroll automatique vers le bas des messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -115,6 +112,7 @@ export default function CommunityTab({ id }) {
         </div>
 
         <div className="flex-1 overflow-y-auto px-2 py-2 custom-scrollbar">
+          {/* ONGLET GROUPES */}
           {activeTab === 'groups' && selectedGroup && (
             <>
               <div className="mb-4">
@@ -174,7 +172,7 @@ export default function CommunityTab({ id }) {
                         >
                           <ShieldAlert size={14} />
                         </button>
-      )}
+                      )}
                     </div>
                   ))}
                 </div>
@@ -182,10 +180,22 @@ export default function CommunityTab({ id }) {
             </>
           )}
 
+          {/* ✅ ONGLET AMIS */}
+          {activeTab === 'friends' && (
+            <div className="flex flex-col h-full">
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
+                <FriendRequests onOpenProfile={onOpenProfile} />
+                <div className="border-t my-4 mx-2" style={{ borderColor: COLORS.border }} />
+                <FriendsTab onOpenProfile={onOpenProfile} />
+              </div>
+            </div>
+          )}
+
+          {/* ONGLET DÉCOUVRIR */}
           {activeTab === 'discover' && (
             <div className="space-y-1">
-              <div className="relative mb-2">
-                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: COLORS.muted }} />
+              <div className="relative mb-2 px-2">
+                <Search size={14} className="absolute left-5 top-1/2 -translate-y-1/2" style={{ color: COLORS.muted }} />
                 <input 
                   type="text" 
                   value={search}
@@ -201,7 +211,7 @@ export default function CommunityTab({ id }) {
                     <img src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${u.display_name}`} className="w-7 h-7 rounded-full" alt="" />
                     <span className="text-xs font-semibold truncate" style={{ color: COLORS.ivory }}>{u.display_name}</span>
                   </div>
-                  {u.id !== id && <FollowButton targetId={u.id} />}
+                  {u.id !== id && <FollowButton targetId={u.id} currentUserId={id} />}
                 </div>
               ))}
             </div>
