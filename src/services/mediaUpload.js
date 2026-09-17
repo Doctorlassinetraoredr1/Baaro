@@ -1,4 +1,4 @@
-import { supabase } from "../../../supabaseClient.js";
+import { supabase } from "../supabaseClient.js";
 
 const BUCKET = "shop-media";
 const MAX_SIZE = 5 * 1024 * 1024; // 5 Mo
