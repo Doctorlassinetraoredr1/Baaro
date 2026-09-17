@@ -1,3 +1,5 @@
+import ProductCard from "../../../components/ProductCard.jsx";
+import { BackBar } from "../../../components/BackBar.jsx";
 import { useState, useEffect, useCallback } from "react";
 import { ArrowLeft, Minus, Plus, ShoppingCart, Loader2 } from "lucide-react";
 import { COLORS } from "../../../theme.js";
@@ -108,14 +110,7 @@ export default function ShopDetail({ shopId, userId, onBack }) {
     return (
       <div className="space-y-4 text-center py-8">
         <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
-        <button 
-          type="button" 
-          onClick={onBack} 
-          className="px-4 py-2 rounded-xl text-sm font-bold border transition-all active:scale-95"
-          style={{ borderColor: COLORS.border, color: COLORS.ivory }}
-        >
-          ← Retour
-        </button>
+        <BackBar title={shop?.name || "Boutique"} onBack={onBack} />
       </div>
     );
   }
@@ -169,49 +164,20 @@ export default function ShopDetail({ shopId, userId, onBack }) {
           products.map((p) => {
             const qty = cart.find((x) => x.productId === p.id)?.quantity || 0;
             return (
-              <div key={p.id} className="flex items-center gap-3 rounded-xl border p-3 transition-all" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
-                {p.image_url ? (
-                  <img src={p.image_url} alt={p.name} className="h-16 w-16 rounded-lg object-cover bg-gray-800 flex-shrink-0" />
-                ) : (
-                  <div className="h-16 w-16 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: COLORS.surface2 }}>
-                    <ShoppingCart size={20} style={{ color: COLORS.muted }} />
-                  </div>
-                )}
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-bold truncate" style={{ color: COLORS.ivory }}>{p.name}</div>
-                  {p.description && <div className="mt-1 text-xs line-clamp-2" style={{ color: COLORS.muted }}>{p.description}</div>}
-                  <div className="mt-2 text-sm font-semibold" style={{ color: COLORS.gold }}>{Number(p.price).toFixed(2)} {p.currency || currency}</div>
-                </div>
-                
-                {qty === 0 ? (
-                  <button 
-                    type="button" 
-                    onClick={() => addToCart(p)} 
-                    disabled={addingId === p.id}
-                    className="rounded-lg px-3 py-2 text-xs font-bold transition-all active:scale-95 disabled:opacity-50 flex-shrink-0" 
-                    style={{ background: COLORS.gold, color: COLORS.bg }}
-                  >
-                    {addingId === p.id ? "..." : "Ajouter"}
-                  </button>
-                ) : (
-                  <div className="flex items-center gap-2 rounded-lg border px-1 py-1 flex-shrink-0" style={{ borderColor: COLORS.border, background: COLORS.surface2 }}>
-                    <button 
-                      type="button" 
-                      onClick={() => changeQuantity(p.id, -1)}
-                      className="p-1 rounded hover:bg-white/5 transition-colors"
-                      style={{ color: COLORS.ivory }}
-                    >
-                      <Minus size={14} />
-                    </button>
+              <div key={p.id} className="space-y-2">
+                <ProductCard
+                  product={{
+                    ...p,
+                    currency: p.currency || currency,
+                    type: p.type || "produit",
+                  }}
+                  onAdd={qty === 0 ? () => addToCart(p) : undefined}
+                />
+                {qty > 0 && (
+                  <div className="flex items-center justify-end gap-2 px-1">
+                    <button type="button" onClick={() => changeQuantity(p.id, -1)} className="p-1 rounded border" style={{ borderColor: COLORS.border, color: COLORS.ivory }}><Minus size={14} /></button>
                     <span className="text-sm font-bold min-w-[20px] text-center" style={{ color: COLORS.ivory }}>{qty}</span>
-                    <button 
-                      type="button" 
-                      onClick={() => changeQuantity(p.id, 1)}
-                      className="p-1 rounded hover:bg-white/5 transition-colors"
-                      style={{ color: COLORS.ivory }}
-                    >
-                      <Plus size={14} />
-                    </button>
+                    <button type="button" onClick={() => changeQuantity(p.id, 1)} className="p-1 rounded border" style={{ borderColor: COLORS.border, color: COLORS.ivory }}><Plus size={14} /></button>
                   </div>
                 )}
               </div>
