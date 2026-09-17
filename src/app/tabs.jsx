@@ -41,18 +41,37 @@ export const tabs = {
   shop: lazy(() =>
     import("../features/shop/index.js").then((m) => ({ default: m.ShopTab }))
   ),
+  // Entreprises (CompanyCard / Detail / Manager / Registration)
   companies: lazy(() =>
-    import("../components/CompaniesTab.jsx").then((m) => ({ default: m.default }))
+    import("../components/EnterprisesTab.jsx").then((m) => ({
+      default: m.default,
+    }))
   ),
-
-  // FIX: settings est en default export
+  // Communauté (groupes / canaux) — distinct de companies
+  community: lazy(() =>
+    import("../components/CommunityTab.jsx").then((m) => ({
+      default: m.default,
+    }))
+  ),
+  discover: lazy(() =>
+    import("../components/DiscoverHub.jsx").then((m) => ({
+      default: m.DiscoverHub,
+    }))
+  ),
+  privacy: lazy(() =>
+    import("../components/PrivacyPage.jsx").then((m) => ({
+      default: m.PrivacyPage,
+    }))
+  ),
   settings: lazy(() =>
-    import("../features/settings/index.tsx").then((m) => ({ default: m.default }))
+    import("../features/settings/index.tsx").then((m) => ({
+      default: m.default,
+    }))
   ),
-
-  // PLUS = onglet qui contient settings (comme tu veux)
   plus: lazy(() =>
-    import("../features/settings/index.tsx").then((m) => ({ default: m.default }))
+    import("../features/settings/index.tsx").then((m) => ({
+      default: m.default,
+    }))
   ),
 };
 

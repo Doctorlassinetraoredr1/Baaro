@@ -1,15 +1,41 @@
 import { useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { Routes, Route, useNavigate, useParams, Navigate } from "react-router-dom";
 import { useApp } from "../contexts/AppContext.jsx";
 import AuthScreen from "../features/auth/index.js";
 import { MainShell } from "./MainShell.jsx";
 import { LoadingScreen } from "./TabFallback.jsx";
+import InvitePage from "../pages/InvitePage.jsx";
+import { PrivacyPage } from "../components/PrivacyPage.jsx";
 
-export default function App() {
+function InviteRouteGate() {
+  const { code } = useParams();
+  const { user, loading } = useApp();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!code) return;
+    // Mémorise le code si pas encore connecté
+    if (!loading && !user?.id) {
+      try {
+        localStorage.setItem("pending_invite_code", code);
+      } catch {}
+    }
+  }, [code, user?.id, loading]);
+
+  if (loading) return <LoadingScreen />;
+  return <InvitePage />;
+}
+
+function PrivacyRoute() {
+  const navigate = useNavigate();
+  return <PrivacyPage onBack={() => navigate("/")} />;
+}
+
+function AppShell() {
   const { user, isGuest, loading } = useApp();
   const navigate = useNavigate();
 
-  // Restaure l'invitation après login (ton système /invite/:code)
+  // Restaure l'invitation après login
   useEffect(() => {
     if (!loading && user?.id) {
       try {
@@ -26,7 +52,6 @@ export default function App() {
     return <LoadingScreen />;
   }
 
-  // user.id = profiles.id (jamais user_id)
   const isRealUser = Boolean(user?.id && user.is_anonymous !== true);
 
   let guestOk = false;
@@ -38,11 +63,20 @@ export default function App() {
 
   const isAnonymousAllowed = Boolean(user?.is_anonymous && guestOk);
 
-  // Pas connecté et pas invité en mode guest -> Auth
   if (!isRealUser && !isGuest && !isAnonymousAllowed) {
     return <AuthScreen />;
   }
 
-  // Connecté ou guest autorisé -> App principale
   return <MainShell />;
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/invite/:code" element={<InviteRouteGate />} />
+      <Route path="/privacy" element={<PrivacyRoute />} />
+      <Route path="/*" element={<AppShell />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
 }

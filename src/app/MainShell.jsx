@@ -79,6 +79,14 @@ export function MainShell() {
     feed: { id, onOpenProfile: setInspectingProfileId, onRewardPoints: earnPoints },
     friends: { id, onOpenProfile: setInspectingProfileId },
     community: { id, onOpenProfile: setInspectingProfileId },
+    companies: { id, onOpenProfile: setInspectingProfileId },
+    discover: {
+      userId: id,
+      onOpenPost: () => setActiveTab("feed"),
+      onOpenLive: () => setActiveTab("debates"),
+      onOpenProfile: setInspectingProfileId,
+    },
+    privacy: { onBack: () => setActiveTab("settings") },
     videos: { id, onRewardPoints: earnPoints, onExit: () => setActiveTab("feed") },
     messages: { id, onRewardPoints: earnPoints, onOpenProfile: setInspectingProfileId },
     wallet: { onNavigateToCrypto: () => setActiveTab("crypto") },
@@ -86,8 +94,17 @@ export function MainShell() {
     debates: { id, onRewardPoints: earnPoints, onOpenProfile: setInspectingProfileId },
     offline: { onRewardPoints: earnPoints },
     assistant: { id, userProfile, pointsBalance, baroBalance, onRewardPoints: earnPoints },
-    settings: { id, userProfile, setUserProfile, currentTheme, onSelectTheme: setCurrentTheme, onReplayOnboarding: () => setForceOnboarding(true) },
-    shop: { id },
+    settings: {
+      id,
+      userProfile,
+      setUserProfile,
+      currentTheme,
+      onSelectTheme: setCurrentTheme,
+      onReplayOnboarding: () => setForceOnboarding(true),
+      onOpenPrivacy: () => setActiveTab("privacy"),
+    },
+    // ShopTab attend userId ; on passe id + alias
+    shop: { id, userId: id },
   };
 
   return (
