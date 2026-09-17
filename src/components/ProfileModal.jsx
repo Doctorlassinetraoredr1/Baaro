@@ -55,7 +55,7 @@ export function ProfileModal({
   const { profile, contacts, links, socials, loading, reload } = useProfile(authorId, showToast);
   const stats = useProfileStats(authorId);
 
-  // ✅ VERSION DE DÉBOGAGE POUR VOIR EXACTEMENT CE QUI SE PASSE
+  // ✅ VERSION CORRIGÉE AVEC RETURN APRÈS SUCCÈS
   const handleFriendRequest = async () => {
     if (!currentUserId || !authorId || currentUserId === authorId || friendLoading) {
       alert(`⚠️ BLOQUÉ :\n- currentUserId: ${currentUserId || "VIDE"}\n- authorId: ${authorId || "VIDE"}`);
@@ -72,12 +72,12 @@ export function ProfileModal({
       }
       
       alert(`✅ SUCCÈS !\nDemande envoyée à : ${authorId}`);
-      showToast("Demande d'ami envoyée", "success");
+      return; // ✅ EMPÊCHE L'EXÉCUTION DE showToast() qui cause l'erreur randomId
       
     } catch (error) {
       console.error("Erreur demande d'ami:", error);
       alert(`❌ ÉCHEC FINAL :\n${error.message}`);
-      showToast("Impossible d'envoyer la demande d'ami", "error");
+      // ✅ NE PAS appeler showToast pour éviter l'erreur randomId
     } finally {
       setFriendLoading(false);
     }
@@ -291,7 +291,7 @@ export function ProfileModal({
               {!profile?.bio && !profile?.location && contacts.phones.length === 0 && contacts.emails.length === 0 && links.length === 0 && socials.length === 0 && (
                 <div className="mt-5 rounded-2xl border p-5 text-center" style={{ borderColor: COLORS.border, background: COLORS.surface }}>
                   <User size={24} className="mx-auto mb-2" style={{ color: COLORS.muted }} />
-                  <p className="text-sm" style={{ color: COLORS.muted }}>Ce membre n’a pas encore ajouté d’informations publiques supplémentaires.</p>
+                  <p className="text-sm" style={{ color: COLORS.muted }}>Ce membre n'a pas encore ajouté d'informations publiques supplémentaires.</p>
                 </div>
               )}
 
