@@ -162,10 +162,82 @@ async function handleApply(admin, user, body, res) {
   }
 }
 
+
+/** GET /api/referral?code=XXX ou rewrite /api/invite/:code → rejoindre un groupe */
+async function handleGroupInvite(admin, user, code, res) {
+  const normalized = String(code || "").trim().toUpperCase();
+  if (!normalized || normalized.length < 4 || normalized.length > 32) {
+    return jsonError(res, 400, "Code d'invitation invalide");
+  }
+
+  const { data: invite, error: invErr } = await admin
+    .from("group_invites")
+    .select("id, group_id, code, max_uses, uses, expires_at")
+    .eq("code", normalized)
+    .maybeSingle();
+
+  if (invErr) console.error("[referral/invite] group_invites", invErr);
+
+  if (invite?.group_id) {
+    if (invite.expires_at && new Date(invite.expires_at) < new Date()) {
+      return jsonError(res, 410, "Code expiré");
+    }
+    if (invite.max_uses > 0 && Number(invite.uses || 0) >= Number(invite.max_uses)) {
+      return jsonError(res, 410, "Code déjà utilisé au maximum");
+    }
+
+    const { data: group } = await admin
+      .from("groups")
+      .select("id, name")
+      .eq("id", invite.group_id)
+      .maybeSingle();
+
+    const { error: e1 } = await admin.from("group_members").upsert(
+      { group_id: invite.group_id, user_id: user.id, role: "member" },
+      { onConflict: "group_id,user_id" }
+    );
+    if (e1) {
+      await admin.from("group_members").upsert(
+        { group_id: invite.group_id, id: user.id, role: "member" },
+        { onConflict: "group_id,id" }
+      );
+    }
+
+    await admin
+      .from("group_invites")
+      .update({ uses: Number(invite.uses || 0) + 1 })
+      .eq("id", invite.id);
+
+    return res.status(200).json({
+      ok: true,
+      group_id: invite.group_id,
+      group_name: group?.name || "le groupe",
+    });
+  }
+
+  const { data: room } = await admin
+    .from("debate_rooms")
+    .select("id, title, invite_code, status")
+    .ilike("invite_code", normalized)
+    .in("status", ["active", "paused"])
+    .maybeSingle();
+
+  if (room?.id) {
+    return res.status(200).json({
+      ok: true,
+      group_id: room.id,
+      group_name: room.title || "Live BAARO",
+      type: "debate",
+    });
+  }
+
+  return jsonError(res, 404, "Code invalide");
+}
+
 export default async function handler(req, res) {
   if (applyCors(req, res)) return;
 
-  if (req.method !== "POST") {
+  if (req.method !== "GET" && req.method !== "POST") {
     return jsonError(res, 405, "Méthode non autorisée");
   }
 
@@ -189,14 +261,33 @@ export default async function handler(req, res) {
     return jsonError(res, e.status || 401, e.message);
   }
 
-  const body = req.body || {};
-
-  try {
-    if (body.action === "my-code") return await handleGetMyCode(admin, user, res);
-    if (body.action === "apply") return await handleApply(admin, user, body, res);
-    return jsonError(res, 400, "Action inconnue (my-code | apply)");
-  } catch (e) {
-    console.error("Erreur /api/referral :", e);
-    return jsonError(res, 500, "Erreur serveur");
+  // Invite groupe / live : GET ?code= ou POST { action: "group-invite", code }
+  const inviteCode =
+    (req.query && (req.query.code || req.query.invite)) ||
+    (req.body && (req.body.code || req.body.invite_code));
+  if (req.method === "GET" && inviteCode) {
+    try {
+      return await handleGroupInvite(admin, user, inviteCode, res);
+    } catch (e) {
+      console.error("Erreur invite groupe :", e);
+      return jsonError(res, 500, "Erreur serveur");
+    }
   }
+
+  if (req.method === "POST") {
+    const body = req.body || {};
+    try {
+      if (body.action === "group-invite") {
+        return await handleGroupInvite(admin, user, body.code || body.invite_code, res);
+      }
+      if (body.action === "my-code") return await handleGetMyCode(admin, user, res);
+      if (body.action === "apply") return await handleApply(admin, user, body, res);
+      return jsonError(res, 400, "Action inconnue (my-code | apply | group-invite)");
+    } catch (e) {
+      console.error("Erreur /api/referral :", e);
+      return jsonError(res, 500, "Erreur serveur");
+    }
+  }
+
+  return jsonError(res, 400, "Précisez code (GET) ou action (POST)");
 }
