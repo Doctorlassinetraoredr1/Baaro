@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../supabaseClient'
-import { useCommunityExtras } from '../hooks/useCommunityExtras'
 
 export default function InvitePage() {
   const { code } = useParams()
@@ -47,7 +46,12 @@ export default function InvitePage() {
       <div className="bg-[#151515] border border-white/10 rounded-2xl p-8 w-full max-w-sm text-center">
         <div className="text-5xl mb-4">👥</div>
         <h1 className="text-xl font-bold mb-2">Invitation Baaro</h1>
-        <p className="text-sm text-white/50 mb-6">Code: <span className="font-mono bg-white/10 px-2 py-1 rounded">{code?.toUpperCase()}</span></p>
+        <p className="text-sm text-white/50 mb-6">
+          Code:{' '}
+          <span className="font-mono bg-white/10 px-2 py-1 rounded">
+            {code?.toUpperCase()}
+          </span>
+        </p>
 
         {status === 'loading' && (
           <div className="flex flex-col items-center gap-3">
@@ -59,7 +63,9 @@ export default function InvitePage() {
         {status === 'success' && (
           <div className="flex flex-col items-center gap-3">
             <div className="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">✓</div>
-            <p className="text-sm">Tu as rejoint <b>{groupName}</b> !</p>
+            <p className="text-sm">
+              Tu as rejoint <b>{groupName}</b> !
+            </p>
             <p className="text-xs text-white/40">Redirection...</p>
           </div>
         )}
@@ -68,7 +74,12 @@ export default function InvitePage() {
           <div className="flex flex-col items-center gap-3">
             <div className="w-12 h-12 bg-red-500 rounded-full flex items-center justify-center">✕</div>
             <p className="text-sm text-red-400">{error}</p>
-            <button onClick={() => navigate('/community')} className="mt-2 text-xs bg-white/10 px-4 py-2 rounded-full">Retour communauté</button>
+            <button
+              onClick={() => navigate('/community')}
+              className="mt-2 text-xs bg-white/10 px-4 py-2 rounded-full"
+            >
+              Retour communauté
+            </button>
           </div>
         )}
       </div>
