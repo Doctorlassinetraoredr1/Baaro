@@ -91,7 +91,7 @@ export function MainShell() {
     messages: { id, onRewardPoints: earnPoints, onOpenProfile: setInspectingProfileId },
     wallet: { onNavigateToCrypto: () => setActiveTab("crypto") },
     crypto: {},
-    debates: { id, onRewardPoints: earnPoints, onOpenProfile: setInspectingProfileId },
+    debates: { id, currentUserId: id, onRewardPoints: earnPoints, onOpenProfile: setInspectingProfileId },
     offline: { onRewardPoints: earnPoints },
     assistant: { id, userProfile, pointsBalance, baroBalance, onRewardPoints: earnPoints },
     settings: {
