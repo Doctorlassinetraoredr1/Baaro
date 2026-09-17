@@ -25,7 +25,11 @@ const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
       .eq("status", "accepted")
       .maybeSingle();
       
-    if (error) console.error("Erreur check:", error);
+    if (error) {
+      console.error("Erreur check:", error);
+      alert("Erreur lecture: " + error.message);
+    }
+    
     setIsFollowing(!!data);
     setLoading(false);
   }, [myId, targetId, isGuest, isSelf]);
@@ -34,8 +38,19 @@ const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
 
   const toggle = async (e) => {
     e.stopPropagation();
-    if (isGuest || !myId) return onRequireAuth?.();
-    if (!targetId || isSelf || loading) return;
+    
+    if (!myId) {
+      alert("PROBLÈME : myId est vide. L'utilisateur n'est pas connecté ou l'ID n'est pas transmis.");
+      return;
+    }
+    if (!targetId) {
+      alert("PROBLÈME : targetId est vide. L'ID du profil à suivre est manquant.");
+      return;
+    }
+    if (isSelf) {
+      alert("INFO : Vous ne pouvez pas vous suivre vous-même.");
+      return;
+    }
 
     const prev = isFollowing;
     setIsFollowing(!prev);
@@ -43,13 +58,11 @@ const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
     
     try {
       if (prev) {
-        // Désabonnement
         const { error } = await supabase.from("follows").delete()
           .eq("follower_id", myId)
           .eq("followed_id", targetId);
         if (error) throw error;
       } else {
-        // ✅ Abonnement - Le trigger SQL crée la notification automatiquement
         const { error } = await supabase.from("follows").upsert(
           { 
             follower_id: myId, 
@@ -62,9 +75,9 @@ const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
         if (error) throw error;
       }
     } catch (err) {
-      alert(` Erreur: ${err.message}`);
+      alert("ERREUR CRITIQUE :\n" + err.message);
       console.error("Erreur follow:", err);
-      setIsFollowing(prev);
+      setIsFollowing(prev); // Annule le changement visuel
     } finally {
       setLoading(false);
     }
