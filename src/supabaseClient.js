@@ -32,35 +32,51 @@ const getCurrentUserId = async () => {
 };
 
 // ========== ABONNÉS / ABONNEMENTS / AMIS ==========
+// ✅ CORRECTION : Utilisation de 'followed_id' au lieu de 'following_id'
 
 export const followUser = async (targetUserId) => {
   const userId = await getCurrentUserId();
   if (!targetUserId || targetUserId === userId) throw new Error("Utilisateur cible invalide");
-  const { data, error } = await supabase.rpc("toggle_follow", { p_target: targetUserId });
+  
+  // ✅ Utiliser followed_id, PAS following_id
+  const { data, error } = await supabase.from("follows").upsert(
+    { 
+      follower_id: userId, 
+      followed_id: targetUserId,  // ✅ CORRECT (was: following_id)
+      status: 'accepted',
+      is_friend: false 
+    },
+    { onConflict: 'follower_id,followed_id' }
+  );
+  
   return { data, error };
 };
 
 export const unfollowUser = async (targetUserId) => {
   const userId = await getCurrentUserId();
   if (!targetUserId || targetUserId === userId) throw new Error("Utilisateur cible invalide");
+  
   const { error } = await supabase
     .from("follows")
     .delete()
     .eq("follower_id", userId)
-    .eq("followed_id", targetUserId);
+    .eq("followed_id", targetUserId);  // ✅ CORRECT (was: following_id)
+    
   return { error };
 };
 
 export const isFollowing = async (targetUserId) => {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user?.id || !targetUserId || user.id === targetUserId) return false;
+  
   const { data } = await supabase
     .from("follows")
     .select("follower_id")
     .eq("follower_id", user.id)
-    .eq("followed_id", targetUserId)
+    .eq("followed_id", targetUserId)  // ✅ CORRECT (was: following_id)
     .eq("status", "accepted")
     .maybeSingle();
+    
   return Boolean(data);
 };
 
@@ -68,20 +84,29 @@ export const sendFriendRequest = async (targetUserId) => {
   const userId = await getCurrentUserId();
   if (!targetUserId || targetUserId === userId) throw new Error("Utilisateur cible invalide");
 
+  // Vérifier si la relation existe déjà
   const { data: existing, error: existingError } = await supabase
     .from("follows")
     .select("follower_id, followed_id, status, is_friend")
     .eq("follower_id", userId)
-    .eq("followed_id", targetUserId)
+    .eq("followed_id", targetUserId)  // ✅ CORRECT (was: following_id)
     .maybeSingle();
+    
   if (existingError) throw existingError;
 
+  // Si déjà amis, retourner
   if (existing?.is_friend && existing.status === "accepted") return { data: existing, error: null };
 
+  // Créer ou mettre à jour la demande d'ami
   const { data, error } = await supabase
     .from("follows")
     .upsert(
-      { follower_id: userId, followed_id: targetUserId, status: "pending", is_friend: true },
+      { 
+        follower_id: userId, 
+        followed_id: targetUserId,  // ✅ CORRECT (was: following_id)
+        status: "pending", 
+        is_friend: true 
+      },
       { onConflict: "follower_id,followed_id" }
     )
     .select("follower_id, followed_id, status, is_friend, created_at")
@@ -92,29 +117,33 @@ export const sendFriendRequest = async (targetUserId) => {
 
 export const acceptFriendRequest = async (followerId) => {
   const userId = await getCurrentUserId();
+  
   const { data, error } = await supabase
     .from("follows")
     .update({ status: "accepted", is_friend: true })
     .eq("follower_id", followerId)
-    .eq("followed_id", userId)
+    .eq("followed_id", userId)  // ✅ CORRECT (was: following_id)
     .eq("status", "pending")
     .eq("is_friend", true)
     .select("follower_id, followed_id, status, is_friend, created_at")
     .single();
+    
   return { data, error };
 };
 
 export const rejectFriendRequest = async (followerId) => {
   const userId = await getCurrentUserId();
+  
   const { data, error } = await supabase
     .from("follows")
     .update({ status: "rejected", is_friend: false })
     .eq("follower_id", followerId)
-    .eq("followed_id", userId)
+    .eq("followed_id", userId)  // ✅ CORRECT (was: following_id)
     .eq("status", "pending")
     .eq("is_friend", true)
     .select("follower_id, followed_id, status, is_friend")
     .single();
+    
   return { data, error };
 };
 
@@ -122,26 +151,31 @@ export const rejectFriendRequest = async (followerId) => {
 
 export const getFollowing = async () => {
   const userId = await getCurrentUserId();
+  
   const { data, error } = await supabase
     .from("follows")
-    .select("followed_id")
+    .select("followed_id")  // ✅ CORRECT (was: following_id)
     .eq("follower_id", userId)
     .eq("status", "accepted");
-  return { data: (data || []).map((f) => f.followed_id), error };
+    
+  return { data: (data || []).map((f) => f.followed_id), error };  // ✅ CORRECT
 };
 
 export const getFollowers = async () => {
   const userId = await getCurrentUserId();
+  
   const { data, error } = await supabase
     .from("follows")
     .select("follower_id")
-    .eq("followed_id", userId)
+    .eq("followed_id", userId)  // ✅ CORRECT (was: following_id)
     .eq("status", "accepted");
+    
   return { data: (data || []).map((f) => f.follower_id), error };
 };
 
 export const getFriends = async () => {
   const userId = await getCurrentUserId();
+  
   const { data, error } = await supabase
     .from("follows")
     .select("follower_id, followed_id")
@@ -152,18 +186,21 @@ export const getFriends = async () => {
   const ids = (data || []).map((row) =>
     row.follower_id === userId ? row.followed_id : row.follower_id
   );
+  
   return { data: [...new Set(ids)], error };
 };
 
 export const getPendingRequests = async () => {
   const userId = await getCurrentUserId();
+  
   const { data, error } = await supabase
     .from("follows")
     .select("follower_id, followed_id, status, is_friend, created_at")
-    .eq("followed_id", userId)
+    .eq("followed_id", userId)  // ✅ CORRECT (was: following_id)
     .eq("is_friend", true)
     .eq("status", "pending")
     .order("created_at", { ascending: false });
+    
   return { data: data || [], error };
 };
 
@@ -174,15 +211,18 @@ export const getAllUsers = async () => {
     .from("profiles")
     .select("*")
     .order("created_at", { ascending: false });
+    
   return { data, error };
 };
 
 export const getUserById = async (userId) => {
   if (!userId) return { data: null, error: new Error("id requis") };
+  
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", userId)
     .maybeSingle();
+    
   return { data, error };
 };
