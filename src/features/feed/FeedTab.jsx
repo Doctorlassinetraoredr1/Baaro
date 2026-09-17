@@ -24,6 +24,7 @@ import { checkRateLimit, rateLimitMessage } from "../../lib/rateLimit.js";
 import { GuestBanner } from "../../components/GuestBanner.jsx";
 import { TranslateButton } from "../../components/TranslateButton.jsx";
 import { PollCard, SocialPostEnhancements, SocialSuggestions } from "./SocialEnhancements.jsx";
+import { PollComposer } from "../../components/PollComposer.jsx";
 import { NotificationDrawer } from "../../components/NotificationDrawer.jsx"; // 🆕 Import du Drawer
 
 // Taille de page pour le fil. Pagination par CURSEUR (created_at + id)
@@ -639,42 +640,18 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
 
         {/* Formulaire de création de sondage complet */}
         {showPoll && (
-          <div className="mb-3 p-3 rounded-xl border" style={{ background: COLORS.surface, borderColor: COLORS.borderTeal }}>
-            <div className="flex items-center justify-between gap-2 mb-2">
-              <p className="font-bold text-xs" style={{ color: COLORS.ivory }}>Créer un sondage</p>
-              <button type="button" onClick={() => setShowPoll(false)} className="p-1" style={{ color: COLORS.muted }}><X size={14} /></button>
-            </div>
-            <input
-              value={pollQuestion}
-              onChange={(e) => setPollQuestion(e.target.value.slice(0, 300))}
-              placeholder="Question du sondage"
-              className="w-full rounded-lg border px-3 py-2 text-xs outline-none mb-2"
-              style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-            />
-            <div className="space-y-2">
-              {pollOptions.map((option, index) => (
-                <div key={index} className="flex gap-2">
-                  <input
-                    value={option}
-                    onChange={(e) => setPollOptions((prev) => prev.map((v, i) => (i === index ? e.target.value.slice(0, 120) : v)))}
-                    placeholder={`Choix ${index + 1}`}
-                    className="flex-1 rounded-lg border px-3 py-2 text-xs outline-none"
-                    style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-                  />
-                  {pollOptions.length > 2 && (
-                    <button type="button" onClick={() => setPollOptions((prev) => prev.filter((_, i) => i !== index))} className="p-2" style={{ color: COLORS.muted }}>
-                      <X size={14} />
-                    </button>
-                  )}
-                </div>
-              ))}
-            </div>
-            {pollOptions.length < 6 && (
-              <button type="button" onClick={() => setPollOptions((prev) => [...prev, ""])} className="mt-2 text-[11px] font-bold" style={{ color: COLORS.teal }}>
-                + Ajouter un choix
-              </button>
-            )}
-          </div>
+          <PollComposer
+            value={{ question: pollQuestion, options: pollOptions }}
+            onChange={(next) => {
+              setPollQuestion(next.question || "");
+              setPollOptions(
+                Array.isArray(next.options) && next.options.length
+                  ? next.options
+                  : ["", ""]
+              );
+            }}
+            onClose={() => setShowPoll(false)}
+          />
         )}
 
         <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: COLORS.border }}>

@@ -1,3 +1,4 @@
+export { PollDisplay } from "../../components/PollDisplay.jsx";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bookmark, Check, Share2, UserPlus, X, Zap } from "lucide-react";
 import { COLORS } from "../../theme.js";
