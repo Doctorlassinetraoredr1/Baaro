@@ -32,6 +32,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { COLORS } from "../../theme.js";
+import { setAppLanguage, SUPPORTED_LANGUAGES } from "../../../i18n.js";
 import { supabase } from "../../supabaseClient.js";
 import { PushSettings } from "../../components/PushSettings.jsx";
 import ProfilePhotosEditor from "../../components/ProfilePhotosEditor.jsx";
@@ -1044,6 +1045,9 @@ export default function SettingsTab({
     const next = { ...settings, ...patch };
     setSettings(next);
     if (patch.theme && onSelectTheme) onSelectTheme(patch.theme);
+    if (patch.lang && SUPPORTED_LANGUAGES.includes(String(patch.lang).split("-")[0])) {
+      void setAppLanguage(patch.lang);
+    }
     if (!user?.id) return;
     try {
       await supabase.from("user_settings").upsert({
