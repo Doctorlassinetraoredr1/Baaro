@@ -11,39 +11,65 @@ export function useCommunity(id) {
     if (!id) return
     setLoading(true)
     
-    const [{ data: friendsData }, { data: usersData }, { data: commData }] = await Promise.all([
-      supabase.rpc('get_user_friends', { id_param: id }),
-      supabase.from('profiles').select('id, display_name, handle, avatar_url, country').limit(30),
-      supabase.rpc('get_my_community', { id_param: id })
-    ])
+    try {
+      const [{ data: friendsData, error: friendsError }, { data: usersData, error: usersError }, { data: commData, error: commError }] = await Promise.all([
+        supabase.rpc('get_user_friends', { user_id: id }),
+        supabase.from('profiles').select('id, display_name, handle, avatar_url, country').limit(30),
+        supabase.rpc('get_my_community', { id_param: id })
+      ])
 
-    if (friendsData?.length) {
-      // ✅ Utilise 'id' si ton RPC retourne l'ID directement, ou 'friend_id' si c'est le nom de la colonne du RPC
-      const ids = friendsData.map(f => f.id || f.friend_id) 
-      const { data } = await supabase.from('profiles').select('id, display_name, handle, avatar_url').in('id', ids)
-      setFriends(data || [])
-    } else {
-      setFriends([])
+      if (friendsError) console.error('❌ Erreur get_user_friends:', friendsError)
+      if (usersError) console.error('❌ Erreur profiles:', usersError)
+      if (commError) console.error('❌ Erreur get_my_community:', commError)
+
+      if (friendsData?.length) {
+        const ids = friendsData.map(f => f.friend_id || f.id).filter(Boolean)
+        console.log('🔍 DEBUG useCommunity - IDs des amis:', ids)
+        
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, display_name, handle, avatar_url')
+          .in('id', ids)
+        
+        if (error) console.error('❌ Erreur récupération profils amis:', error)
+        
+        console.log('✅ DEBUG useCommunity - AMIS TROUVÉS:', data)
+        setFriends(data || [])
+      } else {
+        console.log('⚠️ DEBUG useCommunity - AUCUN AMI. friendsData:', friendsData)
+        setFriends([])
+      }
+
+      setAllUsers(usersData || [])
+      setGroups(commData?.groups || [])
+    } catch (err) {
+      console.error(' Erreur dans loadAll:', err)
+    } finally {
+      setLoading(false)
     }
-
-    setAllUsers(usersData || [])
-    setGroups(commData?.groups || [])
-    setLoading(false)
   }, [id])
 
   useEffect(() => { loadAll() }, [loadAll])
 
   const createGroup = async ({ name, description, is_private }) => {
-    // ✅ owner_id est un rôle spécifique, c'est OK.
-    const { data: g } = await supabase.from('groups').insert({ name, description, is_private, owner_id: id }).select().single()
+    const { data: g, error } = await supabase
+      .from('groups')
+      .insert({ name, description, is_private, owner_id: id })
+      .select()
+      .single()
     
-    // ✅ CORRECTION : 'user_id' remplacé par 'id' pour la référence utilisateur
+    if (error) {
+      console.error('❌ Erreur création groupe:', error)
+      throw error
+    }
+    
     await supabase.from('group_members').insert({ group_id: g.id, id: id, role: 'owner' })
     
     await supabase.from('channels').insert([
       { group_id: g.id, name: 'général', type: 'text' },
       { group_id: g.id, name: 'Vocal Général', type: 'voice' }
     ])
+    
     await loadAll()
     return g
   }
@@ -58,13 +84,11 @@ export function useCommunity(id) {
     await loadAll() 
   }
 
-  // ✅ CORRECTION : 'user_id' remplacé par 'id'
   const banMember = async (groupId, targetId) => { 
     await supabase.from('group_members').delete().eq('group_id', groupId).eq('id', targetId)
     await loadAll() 
   }
 
-  // ✅ CORRECTION : 'user_id' remplacé par 'id'
   const updateMemberRole = async (groupId, targetId, role) => { 
     await supabase.from('group_members').update({ role }).eq('group_id', groupId).eq('id', targetId)
     await loadAll() 
@@ -86,7 +110,6 @@ export function useChannelMessages(channelId) {
   useEffect(() => {
     if (!channelId) return
     
-    // Charge seulement quand tu cliques sur le canal -> 0 API au démarrage
     supabase.from('channel_messages')
       .select('*, profiles(display_name, handle, avatar_url)')
       .eq('channel_id', channelId)
@@ -106,7 +129,6 @@ export function useChannelMessages(channelId) {
     return () => supabase.removeChannel(ch)
   }, [channelId])
 
-  // ✅ sender_id est un nom de colonne spécifique (comme author_id), c'est OK.
   const sendMessage = async (text, senderId) => { 
     await supabase.from('channel_messages').insert({ channel_id: channelId, sender_id: senderId, text }) 
   }
@@ -126,13 +148,11 @@ export function useVoiceChannel(channelId, id) {
       .then(({ data }) => setParticipants(data || [])) 
   }, [channelId])
 
-  // ✅ CORRECTION : 'user_id' remplacé par 'id'
   const joinVoice = async () => { 
     await supabase.from('voice_participants').upsert({ channel_id: channelId, id: id })
     setIsJoined(true) 
   }
 
-  // ✅ CORRECTION : 'user_id' remplacé par 'id'
   const leaveVoice = async () => { 
     await supabase.from('voice_participants').delete().eq('channel_id', channelId).eq('id', id)
     setIsJoined(false) 
