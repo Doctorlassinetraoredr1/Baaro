@@ -2,7 +2,7 @@ import React, { useEffect } from 'react';
 import { useApp } from '../../contexts/AppContext';
 import { useSocial } from '../../hooks/useSocial';
 
-export const FriendsTab = () => {
+export const FriendsTab = ({ onOpenProfile }) => {
   const { user, isGuest } = useApp();
   const { friends, fetchFriends, loading } = useSocial(user?.id);
 
@@ -28,7 +28,12 @@ export const FriendsTab = () => {
       ) : (
         <ul className="friends-list">
           {friends.map((friend) => (
-            <li key={friend.id} className="friend-card">
+            <li
+              key={friend.id}
+              className="friend-card"
+              style={{ cursor: onOpenProfile ? 'pointer' : 'default' }}
+              onClick={() => onOpenProfile?.(friend.id)}
+            >
               <img src={friend.avatar_url || '/default-avatar.png'} alt={friend.username} />
               <span>{friend.username}</span>
             </li>
