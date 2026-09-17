@@ -44,8 +44,8 @@ import { ChatCallModal } from "./ChatCallModal.jsx";
 /**
  * Messages + liste d'amis + recherche + vocaux + fichiers + appels
  */
-export function MessagesTab({ onRewardPoints, userId: propUserId }) {
-  const [currentUserId, setCurrentUserId] = useState(propUserId || null);
+export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
+  const [id, setId] = useState(propId || null);
   const [conversations, setConversations] = useState([]);
   const [activeChat, setActiveChat] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -74,14 +74,14 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
   const recordStartRef = useRef(null);
 
   useEffect(() => {
-    if (propUserId) {
-      setCurrentUserId(propUserId);
+    if (propId) {
+      setId(propId);
       return;
     }
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) setCurrentUserId(user.id);
+      if (user) setId(user.id);
     });
-  }, [propUserId]);
+  }, [propId]);
 
   const fetchProfiles = useCallback(async (ids) => {
     const missing = ids.filter((id) => id && !profilesCache.current[id]);
@@ -97,13 +97,13 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
   }, []);
 
   const fetchConversations = useCallback(async () => {
-    if (!currentUserId) return;
+    if (!id) return;
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from("conversations")
         .select("id, user1_id, user2_id, created_at")
-        .or(`user1_id.eq.${currentUserId},user2_id.eq.${currentUserId}`)
+        .or(`user1_id.eq.${id},user2_id.eq.${id}`)
         .order("created_at", { ascending: false })
         .limit(50);
 
@@ -111,14 +111,14 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
 
       const rows = data || [];
       const otherIds = rows.map((c) =>
-        c.user1_id === currentUserId ? c.user2_id : c.user1_id
+        c.user1_id === id ? c.user2_id : c.user1_id
       );
       await fetchProfiles(otherIds);
 
       const enriched = await Promise.all(
         rows.map(async (c) => {
           const otherId =
-            c.user1_id === currentUserId ? c.user2_id : c.user1_id;
+            c.user1_id === id ? c.user2_id : c.user1_id;
           const profile = profilesCache.current[otherId] || {
             display_name: "Membre",
             flag: "🌍",
@@ -156,10 +156,10 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
     } finally {
       setLoading(false);
     }
-  }, [currentUserId, fetchProfiles]);
+  }, [id, fetchProfiles]);
 
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!id) return;
     fetchConversations();
     const channel = supabase
       .channel("public:messages-list")
@@ -172,20 +172,20 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUserId, fetchConversations]);
+  }, [id, fetchConversations]);
 
   // Écoute appels entrants
   useEffect(() => {
-    if (!currentUserId) return;
+    if (!id) return;
     const channel = supabase
-      .channel(`calls-incoming-${currentUserId}`)
+      .channel(`calls-incoming-${id}`)
       .on(
         "postgres_changes",
         {
           event: "INSERT",
           schema: "public",
           table: "calls",
-          filter: `callee_id=eq.${currentUserId}`,
+          filter: `callee_id=eq.${id}`,
         },
         async (payload) => {
           const call = payload.new;
@@ -222,7 +222,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
       )
       .subscribe();
     return () => supabase.removeChannel(channel);
-  }, [currentUserId, fetchProfiles]);
+  }, [id, fetchProfiles]);
 
   useEffect(() => {
     if (!activeChat?.id) return;
@@ -267,7 +267,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
 
   // ---- Amis ----
   const loadFriends = useCallback(async () => {
-    if (!currentUserId) return;
+    if (!id) return;
     setLoadingFriends(true);
     try {
       const [{ data: friendIds }, { data: followingIds }, { data: followerIds }] =
@@ -279,7 +279,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
           ...(followingIds || []),
           ...(followerIds || []),
         ]),
-      ].filter((id) => id && id !== currentUserId);
+      ].filter((uid) => uid && uid !== id);
 
       if (ids.length === 0) {
         setFriends([]);
@@ -306,7 +306,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
     } finally {
       setLoadingFriends(false);
     }
-  }, [currentUserId, fetchProfiles]);
+  }, [id, fetchProfiles]);
 
   useEffect(() => {
     if (showNewChat && pickerTab === "friends") loadFriends();
@@ -328,7 +328,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
           .from("profiles")
           .select("id, display_name, handle, avatar_url, flag")
           .or(`display_name.ilike.${pattern},handle.ilike.${pattern}`)
-          .neq("id", currentUserId)
+          .neq("id", id)
           .limit(25);
         if (error) throw error;
         setSearchResults(data || []);
@@ -340,14 +340,14 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
       }
     }, 300);
     return () => clearTimeout(t);
-  }, [searchQuery, showNewChat, pickerTab, currentUserId]);
+  }, [searchQuery, showNewChat, pickerTab, id]);
 
   const createOrOpenConversation = async (otherUserId, name, avatar, flag) => {
-    if (!currentUserId || !otherUserId) {
+    if (!id || !otherUserId) {
       alert("Tu n'es pas connecté");
       return;
     }
-    if (otherUserId === currentUserId) {
+    if (otherUserId === id) {
       alert("Tu ne peux pas discuter avec toi-même");
       return;
     }
@@ -364,7 +364,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
         .from("conversations")
         .select("id, user1_id, user2_id")
         .or(
-          `and(user1_id.eq.${currentUserId},user2_id.eq.${otherUserId}),and(user1_id.eq.${otherUserId},user2_id.eq.${currentUserId})`
+          `and(user1_id.eq.${id},user2_id.eq.${otherUserId}),and(user1_id.eq.${otherUserId},user2_id.eq.${id})`
         )
         .limit(1);
 
@@ -385,8 +385,8 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
         return;
       }
 
-      const u1 = currentUserId < otherUserId ? currentUserId : otherUserId;
-      const u2 = currentUserId < otherUserId ? otherUserId : currentUserId;
+      const u1 = id < otherUserId ? id : otherUserId;
+      const u2 = id < otherUserId ? otherUserId : id;
 
       const { data: newConv, error } = await supabase
         .from("conversations")
@@ -429,13 +429,13 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
   // ---- Envoi texte ----
   const handleSendMessage = async (e) => {
     e?.preventDefault?.();
-    if (!newMessage.trim() || !activeChat || !currentUserId) return;
+    if (!newMessage.trim() || !activeChat || !id) return;
     const text = newMessage.trim();
     setNewMessage("");
     try {
       const { error } = await supabase.from("messages").insert({
         conversation_id: activeChat.id,
-        sender_id: currentUserId,
+        sender_id: id,
         recipient_id: activeChat.otherUserId,
         text,
         type: "text",
@@ -464,19 +464,19 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
       alert("Ouvre une conversation d'abord");
       return;
     }
-    if (!currentUserId) {
+    if (!id) {
       alert("Tu n'es pas connecté");
       return;
     }
 
     setUploading(true);
     try {
-      const uploaded = await uploadChatFile(file, currentUserId);
+      const uploaded = await uploadChatFile(file, id);
       const msgType = mimeToMessageType(uploaded.mime);
 
       const { error } = await supabase.from("messages").insert({
         conversation_id: activeChat.id,
-        sender_id: currentUserId,
+        sender_id: id,
         recipient_id: activeChat.otherUserId,
         text: uploaded.fileName || "Fichier",
         type: msgType === "voice" ? "audio" : msgType,
@@ -559,10 +559,10 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
         }
         setUploading(true);
         try {
-          const uploaded = await uploadVoiceBlob(blob, currentUserId, duration);
+          const uploaded = await uploadVoiceBlob(blob, id, duration);
           const { error } = await supabase.from("messages").insert({
             conversation_id: activeChat.id,
-            sender_id: currentUserId,
+            sender_id: id,
             recipient_id: activeChat.otherUserId,
             text: "🎤 Message vocal",
             type: "voice",
@@ -606,7 +606,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
 
   // ---- Appels ----
   const startOutgoingCall = async (type = "voice") => {
-    if (!activeChat || !currentUserId) return;
+    if (!activeChat || !id) return;
     try {
       const res = await createCallRoom({
         userName: activeChat.otherUserName || "BAARO",
@@ -623,7 +623,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
       try {
         record = await createCallRecord({
           conversationId: activeChat.id,
-          callerId: currentUserId,
+          callerId: id,
           calleeId: activeChat.otherUserId,
           type,
           dailyRoomName: roomName,
@@ -775,7 +775,13 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
       className="w-full p-3 rounded-2xl border text-left hover:border-amber-400/50 transition flex items-center gap-3"
       style={{ background: COLORS.surface, borderColor: COLORS.border }}
     >
-      <div className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center overflow-hidden text-lg shrink-0">
+      <div
+        className="w-11 h-11 rounded-full bg-white/10 flex items-center justify-center overflow-hidden text-lg shrink-0"
+        onClick={(e) => {
+          e.stopPropagation();
+          onOpenProfile?.(user.id);
+        }}
+      >
         {user.avatar_url ? (
           <img src={user.avatar_url} className="w-full h-full object-cover" alt="" />
         ) : (
@@ -959,7 +965,10 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
             >
               <ArrowLeft size={20} />
             </button>
-            <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center overflow-hidden text-sm">
+            <div
+              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center overflow-hidden text-sm cursor-pointer"
+              onClick={() => onOpenProfile?.(activeChat.otherUserId)}
+            >
               {activeChat.otherUserAvatar ? (
                 <img
                   src={activeChat.otherUserAvatar}
@@ -970,7 +979,10 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
                 activeChat.otherUserFlag || "🌍"
               )}
             </div>
-            <div className="min-w-0 flex-1">
+            <div
+              className="min-w-0 flex-1 cursor-pointer"
+              onClick={() => onOpenProfile?.(activeChat.otherUserId)}
+            >
               <p className="font-bold text-sm truncate" style={{ color: COLORS.ivory }}>
                 {activeChat.otherUserName}
               </p>
@@ -1002,7 +1014,7 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
               </p>
             )}
             {messages.map((msg) => {
-              const isMe = msg.sender_id === currentUserId;
+              const isMe = msg.sender_id === id;
               return (
                 <div
                   key={msg.id}
@@ -1237,7 +1249,13 @@ export function MessagesTab({ onRewardPoints, userId: propUserId }) {
                 className="w-full p-3 rounded-2xl border text-left hover:border-amber-400/40 transition flex items-center gap-3"
                 style={{ background: COLORS.surface, borderColor: COLORS.border }}
               >
-                <div className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center overflow-hidden text-lg shrink-0">
+                <div
+                  className="w-12 h-12 rounded-full bg-white/10 flex items-center justify-center overflow-hidden text-lg shrink-0"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onOpenProfile?.(c.otherUserId);
+                  }}
+                >
                   {c.otherUserAvatar ? (
                     <img
                       src={c.otherUserAvatar}
