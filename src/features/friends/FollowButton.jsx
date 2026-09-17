@@ -1,12 +1,8 @@
 import React, { useState, useEffect, useCallback } from "react";
-// import { useApp } from "../../contexts/AppContext"; // Décommente si tu utilises ce contexte
 import { supabase } from "../../supabaseClient";
-import { COLORS } from "../../theme.js"; // Pour garder la cohérence visuelle
+import { COLORS } from "../../theme.js";
 
 const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
-  // Si tu utilises un contexte, remplace la ligne ci-dessous par :
-  // const { user, isGuest } = useApp();
-  // const myId = user?.id;
   const myId = currentUserId; 
   const isGuest = !myId;
   
@@ -27,6 +23,7 @@ const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
       .select("follower_id")
       .eq("follower_id", myId)
       .eq("followed_id", targetId)
+      .eq("status", "accepted")
       .maybeSingle();
       
     setIsFollowing(!!data);
@@ -54,20 +51,12 @@ const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
       } else {
         // Abonnement
         await supabase.from("follows").upsert(
-          { follower_id: myId, followed_id: targetId },
+          { follower_id: myId, followed_id: targetId, status: 'accepted', is_friend: false },
           { onConflict: 'follower_id,followed_id' }
         ).throwOnError();
 
-        // ⚠️ CORRECTION CRITIQUE : La colonne s'appelle 'id', pas 'receiver_id' ni 'user_id'
-        // 💡 NOTE : Si tu as appliqué la migration SQL "042_notifications_realtime.sql", 
-        // le trigger crée cette notification AUTOMATIQUEMENT. Tu peux donc supprimer 
-        // ce bloc 'notifications.insert' pour éviter les doublons.
-        await supabase.from("notifications").insert({
-          id: targetId,          // <-- C'est ici que ça change
-          actor_id: myId,
-          type: 'follow',
-          message: 'Vous suit maintenant'
-        }).throwOnError();
+        // ✅ CORRECTION : L'insertion manuelle dans notifications est supprimée.
+        // Le trigger SQL 'on_follow_created' gère maintenant cela automatiquement.
       }
     } catch (err) {
       console.error("Erreur follow:", err.message);
