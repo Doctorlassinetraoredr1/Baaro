@@ -3,6 +3,7 @@ import { ArrowLeft, Minus, Plus, ShoppingCart, Loader2 } from "lucide-react";
 import { COLORS } from "../../../theme.js";
 import { fetchShopById, fetchShopProducts } from "../../../services/shopApi.js";
 import OrderCheckout from "./OrderCheckout.jsx";
+import ShopReviews from "../../../components/ShopReviews.jsx";
 import { useToast } from "../../../components/ToastContext.jsx";
 import { supabase } from "../../../supabaseClient.js";
 
@@ -217,6 +218,11 @@ export default function ShopDetail({ shopId, userId, onBack }) {
             );
           })
         )}
+      </div>
+
+      {/* Avis boutique */}
+      <div className="mt-6 px-1">
+        <ShopReviews shopId={shopId} userId={userId} />
       </div>
 
       {/* Barre de panier flottante */}
