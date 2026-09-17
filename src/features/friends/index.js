@@ -1,2 +1,3 @@
 export { FriendsTab } from "./FriendsTab.jsx";
+export { FriendRequests } from "./FriendRequests.jsx";
 export { default as FollowButton } from "./FollowButton.jsx";
