@@ -3,6 +3,7 @@ import { useApp } from "../contexts/AppContext.jsx";
 import { Header } from "../components/Header.jsx";
 import { Navigation } from "../components/Navigation.jsx";
 import { ProfileModal } from "../features/profile/index.js";
+import ProfileSettings from "../features/profile/ProfileSettings.jsx"; // 🆕 Import du composant de modification
 import { NotificationDrawer } from "../components/NotificationDrawer.jsx";
 import { GlobalSearchModal } from "../components/GlobalSearchModal.jsx";
 import { ErrorBoundary } from "../components/ErrorBoundary.jsx";
@@ -25,7 +26,7 @@ const WELCOME_TOAST_KEY = "baaro:welcome_toast_shown";
 
 export function MainShell() {
   const {
-    user, // <- user.id = id de profiles
+    user,
     userProfile,
     pointsBalance,
     baroBalance,
@@ -35,14 +36,17 @@ export function MainShell() {
   } = useApp();
 
   const { showToast, showPointsReward } = useToast();
-  const id = user?.id; // <- SEULEMENT id, jamais userId
+  const id = user?.id; // SEULEMENT id, jamais userId
 
   useApplyPendingReferral({ showToast });
 
   const [activeTab, setActiveTab] = useState(() => loadLastTab("feed"));
   const [lang, setLang] = useState("fr");
   const [currentTheme, setCurrentTheme] = useState("midnight");
+  
+  // États des modales
   const [inspectingProfileId, setInspectingProfileId] = useState(null);
+  const [showProfileSettings, setShowProfileSettings] = useState(false); // 🆕 État pour les paramètres
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [forceOnboarding, setForceOnboarding] = useState(false);
@@ -56,7 +60,7 @@ export function MainShell() {
       if (isAnonymous) {
         showToast("Bienvenue! Explore librement. Crée un compte pour gagner.", "info", 5500);
       } else if (pointsBalance > 0) {
-        showPointsReward(pointsBalance >= 50? 50 : pointsBalance, "Bonus de bienvenue");
+        showPointsReward(pointsBalance >= 50 ? 50 : pointsBalance, "Bonus de bienvenue");
       } else {
         showToast("Bienvenue sur BAARO — like, publie et débat pour gagner.", "info", 4500);
       }
@@ -74,13 +78,9 @@ export function MainShell() {
 
   // Tous les tabs reçoivent id, pas userId
   const tabProps = {
-    feed: {
-      id,
-      onOpenProfile: setInspectingProfileId,
-      onRewardPoints: earnPoints,
-    },
+    feed: { id, onOpenProfile: setInspectingProfileId, onRewardPoints: earnPoints },
     friends: { id, onOpenProfile: setInspectingProfileId },
-    community: { id, onOpenProfile: setInspectingProfileId }, // <- ton CommunityTab optimisé
+    community: { id, onOpenProfile: setInspectingProfileId },
     videos: { id, onRewardPoints: earnPoints, onExit: () => setActiveTab("feed") },
     messages: { id, onRewardPoints: earnPoints, onOpenProfile: setInspectingProfileId },
     wallet: { onNavigateToCrypto: () => setActiveTab("crypto") },
@@ -95,7 +95,7 @@ export function MainShell() {
   return (
     <div
       className="min-h-screen flex flex-col transition-colors duration-500"
-      style={{ background: isImmersive? "#000" : themeBg, color: COLORS.ivory }}
+      style={{ background: isImmersive ? "#000" : themeBg, color: COLORS.ivory }}
     >
       <OfflineBanner />
       <OnboardingModal forceOpen={forceOnboarding} onClose={() => setForceOnboarding(false)} />
@@ -114,32 +114,65 @@ export function MainShell() {
         />
       )}
 
-      {isImmersive? (
+      {isImmersive ? (
         <main id="main-content" className="flex-1 relative" tabIndex={-1}>
-          <ErrorBoundary><Suspense fallback={<TabFallback />}>{Tab? <Tab {...(tabProps[activeTab] || {})} /> : null}</Suspense></ErrorBoundary>
+          <ErrorBoundary>
+            <Suspense fallback={<TabFallback />}>
+              {Tab ? <Tab {...(tabProps[activeTab] || {})} /> : null}
+            </Suspense>
+          </ErrorBoundary>
         </main>
       ) : (
         <div className="max-w-7xl mx-auto w-full px-3 sm:px-6 pt-4 sm:pt-6 flex-1 grid grid-cols-1 md:grid-cols-4 gap-6">
-          <div className="md:col-span-1"><Navigation activeTab={activeTab} setActiveTab={setActiveTab} /></div>
+          <div className="md:col-span-1">
+            <Navigation activeTab={activeTab} setActiveTab={setActiveTab} />
+          </div>
           <main id="main-content" className="md:col-span-3 mobile-nav-spacer" tabIndex={-1}>
-            <ErrorBoundary><Suspense fallback={<TabFallback />}>{Tab? <Tab {...(tabProps[activeTab] || {})} /> : null}</Suspense></ErrorBoundary>
+            <ErrorBoundary>
+              <Suspense fallback={<TabFallback />}>
+                {Tab ? <Tab {...(tabProps[activeTab] || {})} /> : null}
+              </Suspense>
+            </ErrorBoundary>
           </main>
         </div>
       )}
 
       {isImmersive && <div className="md:hidden"><Navigation activeTab={activeTab} setActiveTab={setActiveTab} /></div>}
 
+      {/* 🆕 Modale de consultation de profil */}
       {inspectingProfileId && (
         <ProfileModal
           id={inspectingProfileId}
           currentId={id}
           onClose={() => setInspectingProfileId(null)}
           onNavigateToMessages={() => setActiveTab("messages")}
+          onOpenSettings={() => {
+            setInspectingProfileId(null); // Ferme la vue profil
+            setShowProfileSettings(true); // Ouvre les paramètres
+          }}
         />
       )}
 
-      <NotificationDrawer isOpen={notifDrawerOpen} onClose={() => setNotifDrawerOpen(false)} id={id} />
-      <GlobalSearchModal isOpen={searchModalOpen} onClose={() => setSearchModalOpen(false)} onSelectUser={(profileId) => setInspectingProfileId(profileId)} onSelectTab={(tabId) => setActiveTab(tabId)} />
+      {/* 🆕 Modale de modification de profil (uniquement pour son propre profil) */}
+      {showProfileSettings && id && (
+        <ProfileSettings
+          userId={id}
+          onClose={() => setShowProfileSettings(false)}
+        />
+      )}
+
+      <NotificationDrawer 
+        isOpen={notifDrawerOpen} 
+        onClose={() => setNotifDrawerOpen(false)} 
+        id={id} 
+      />
+      
+      <GlobalSearchModal 
+        isOpen={searchModalOpen} 
+        onClose={() => setSearchModalOpen(false)} 
+        onSelectUser={(profileId) => setInspectingProfileId(profileId)} 
+        onSelectTab={(tabId) => setActiveTab(tabId)} 
+      />
     </div>
   );
 }
