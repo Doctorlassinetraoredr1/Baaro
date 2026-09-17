@@ -2,8 +2,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useApp } from "../contexts/AppContext.jsx";
 import { Header } from "../components/Header.jsx";
 import { Navigation } from "../components/Navigation.jsx";
-import { ProfileModal } from "../features/profile/index.js";
-import ProfileSettings from "../features/profile/ProfileSettings.jsx"; // 🆕 Import du composant de modification
+import ProfileModal from "../components/ProfileModal.jsx"; // ✅ Chemin corrigé
 import { NotificationDrawer } from "../components/NotificationDrawer.jsx";
 import { GlobalSearchModal } from "../components/GlobalSearchModal.jsx";
 import { ErrorBoundary } from "../components/ErrorBoundary.jsx";
@@ -46,7 +45,6 @@ export function MainShell() {
   
   // États des modales
   const [inspectingProfileId, setInspectingProfileId] = useState(null);
-  const [showProfileSettings, setShowProfileSettings] = useState(false); // 🆕 État pour les paramètres
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [forceOnboarding, setForceOnboarding] = useState(false);
@@ -139,25 +137,18 @@ export function MainShell() {
 
       {isImmersive && <div className="md:hidden"><Navigation activeTab={activeTab} setActiveTab={setActiveTab} /></div>}
 
-      {/* 🆕 Modale de consultation de profil */}
+      {/* Modale de consultation de profil */}
       {inspectingProfileId && (
         <ProfileModal
           id={inspectingProfileId}
           currentId={id}
           onClose={() => setInspectingProfileId(null)}
           onNavigateToMessages={() => setActiveTab("messages")}
+          // ✅ Redirige vers l'onglet Paramètres au lieu d'ouvrir une modale inexistante
           onOpenSettings={() => {
-            setInspectingProfileId(null); // Ferme la vue profil
-            setShowProfileSettings(true); // Ouvre les paramètres
+            setInspectingProfileId(null);
+            setActiveTab("settings");
           }}
-        />
-      )}
-
-      {/* 🆕 Modale de modification de profil (uniquement pour son propre profil) */}
-      {showProfileSettings && id && (
-        <ProfileSettings
-          userId={id}
-          onClose={() => setShowProfileSettings(false)}
         />
       )}
 
