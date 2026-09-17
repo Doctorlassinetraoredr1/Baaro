@@ -13,7 +13,8 @@ import CartDrawer from "./components/CartDrawer.jsx"; // 🆕 Import du panier
  * Onglet Boutiques BAARO — version finale avec Panier
  * Modes : directory | detail | register | manage | orders-buyer | orders-seller
  */
-export default function ShopTab({ userId }) {
+export default function ShopTab({ userId, id }) {
+  userId = userId || id;
   const [mode, setMode] = useState("directory");
   const [myShop, setMyShop] = useState(null);
   const [selectedShopId, setSelectedShopId] = useState(null);

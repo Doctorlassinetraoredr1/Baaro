@@ -15,6 +15,8 @@ import {
 import { COLORS } from "../../theme.js";
 import { supabase } from "../../supabaseClient.js";
 import { fetchActiveShops, fetchShopProducts } from "../../services/shopApi.js";
+import ProductForm from "../../components/ProductForm.jsx";
+import { ConfirmDialog } from "../../components/ConfirmDialog.jsx";
 import { useToast } from "../../components/ToastContext.jsx";
 
 // ==========================================
@@ -173,6 +175,7 @@ export function ShopProductManager({ shopId, shopCurrency }) {
   const [error, setError] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState(null);
   const [formData, setFormData] = useState({
     name: "",
     description: "",
@@ -283,16 +286,21 @@ export function ShopProductManager({ shopId, shopCurrency }) {
     }
   };
 
-  const handleDelete = async (productId) => {
-    if (!window.confirm("Supprimer ce produit ?")) return;
+  const handleDelete = (productId) => {
+    setPendingDeleteId(productId);
+  };
+
+  const confirmDelete = async () => {
+    const productId = pendingDeleteId;
+    if (!productId) return;
+    setPendingDeleteId(null);
     try {
       const { error } = await supabase.from("shop_items").delete().eq("id", productId);
       if (error) throw error;
-      showToast("Produit supprimé", "success");
       await loadProducts();
     } catch (e) {
-      console.error("Erreur suppression:", e);
-      showToast("Erreur lors de la suppression", "error");
+      console.error(e);
+      alert(e.message || "Suppression impossible");
     }
   };
 
@@ -406,139 +414,37 @@ export function ShopProductManager({ shopId, shopCurrency }) {
       )}
 
       {/* Formulaire modal */}
+      {pendingDeleteId && (
+        <ConfirmDialog
+          open={Boolean(pendingDeleteId)}
+          title="Supprimer ce produit ?"
+          message="Cette action est définitive."
+          confirmLabel="Supprimer"
+          cancelLabel="Annuler"
+          onConfirm={confirmDelete}
+          onCancel={() => setPendingDeleteId(null)}
+        />
+      )}
       {showForm && (
         <div
           className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
           onClick={closeForm}
         >
           <div
-            className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl p-6"
+            className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl p-4"
             style={{ background: COLORS.surface, borderColor: COLORS.borderGold }}
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-base" style={{ color: COLORS.ivory }}>
-                {editingProduct ? "Modifier le produit" : "Ajouter un produit"}
-              </h3>
-              <button
-                onClick={closeForm}
-                className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-                style={{ color: COLORS.muted }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: COLORS.ivory }}>
-                  Nom du produit *
-                </label>
-                <input
-                  type="text"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none transition-colors focus:border-amber-400/50"
-                  style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: COLORS.ivory }}>
-                  Description
-                </label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  rows={3}
-                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none resize-none transition-colors focus:border-amber-400/50"
-                  style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{ color: COLORS.ivory }}>
-                    Prix *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border text-sm outline-none transition-colors focus:border-amber-400/50"
-                    style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-                    required
-                  />
-                </div>
-                <div>
-                  <label className="text-xs font-bold mb-1 block" style={{ color: COLORS.ivory }}>
-                    Stock
-                  </label>
-                  <input
-                    type="number"
-                    value={formData.stock}
-                    onChange={(e) => setFormData({ ...formData, stock: e.target.value })}
-                    className="w-full px-3 py-2 rounded-xl border text-sm outline-none transition-colors focus:border-amber-400/50"
-                    style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-xs font-bold mb-1 block" style={{ color: COLORS.ivory }}>
-                  URL de l'image
-                </label>
-                <input
-                  type="url"
-                  value={formData.image_url}
-                  onChange={(e) => setFormData({ ...formData, image_url: e.target.value })}
-                  placeholder="https://..."
-                  className="w-full px-3 py-2 rounded-xl border text-sm outline-none transition-colors focus:border-amber-400/50"
-                  style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-                />
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_available"
-                  checked={formData.is_available}
-                  onChange={(e) => setFormData({ ...formData, is_available: e.target.checked })}
-                  className="w-4 h-4"
-                />
-                <label htmlFor="is_available" className="text-xs" style={{ color: COLORS.ivory }}>
-                  Produit disponible à la vente
-                </label>
-              </div>
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={closeForm}
-                  className="flex-1 px-4 py-2.5 rounded-xl text-xs font-bold border transition-all active:scale-95"
-                  style={{ borderColor: COLORS.border, color: COLORS.muted }}
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={saving}
-                  className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-95 disabled:opacity-50"
-                  style={{ background: COLORS.gold, color: COLORS.bg }}
-                >
-                  {saving ? (
-                    <>
-                      <Loader2 className="animate-spin" size={14} />
-                      Enregistrement...
-                    </>
-                  ) : (
-                    editingProduct ? "Modifier" : "Ajouter"
-                  )}
-                </button>
-              </div>
-            </form>
+            <ProductForm
+              shopId={shopId}
+              shopCurrency={shopCurrency}
+              product={editingProduct}
+              onSaved={() => {
+                closeForm();
+                loadProducts();
+              }}
+              onCancel={closeForm}
+            />
           </div>
         </div>
       )}
