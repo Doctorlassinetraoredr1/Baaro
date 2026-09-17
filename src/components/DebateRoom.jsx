@@ -61,6 +61,7 @@ function ParticipantTile({
   videoTrack,
   isSpeaking = false,
   compact = false,
+  onOpenProfile,
 }) {
   const videoRef = useRef(null);
   const track = videoTrack || getVideoTrack(participant);
@@ -86,6 +87,7 @@ function ParticipantTile({
   }, [hasVideo, track]);
 
   const name = isLocal ? "Vous" : participant?.user_name || "Participant";
+  const canOpenProfile = !isLocal && participant?.user_id && onOpenProfile;
 
   return (
     <div
@@ -134,7 +136,20 @@ function ParticipantTile({
           color: "#fff",
         }}
       >
-        <span className="truncate">{name}</span>
+        {canOpenProfile ? (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onOpenProfile(participant.user_id);
+            }}
+            className="truncate hover:underline text-left"
+          >
+            {name}
+          </button>
+        ) : (
+          <span className="truncate">{name}</span>
+        )}
         {isLocal && (
           <span className="text-[9px] opacity-70 shrink-0">MOI</span>
         )}
@@ -152,6 +167,7 @@ export function DebateRoom({
   inviteCode,
   currentUserId: currentUserIdProp,
   onBack,
+  onOpenProfile,
 }) {
   const [resolvedUserId, setResolvedUserId] = useState(
     currentUserIdProp || null
@@ -1294,6 +1310,7 @@ export function DebateRoom({
                     isSpeaking={
                       activeSpeakerId === remoteParticipants[0].session_id
                     }
+                    onOpenProfile={onOpenProfile}
                   />
                   {localParticipant && (
                     <div
@@ -1340,6 +1357,7 @@ export function DebateRoom({
                       isLocal={false}
                       videoTrack={videoTracks[p.session_id]}
                       isSpeaking={activeSpeakerId === p.session_id}
+                      onOpenProfile={onOpenProfile}
                     />
                   ))}
                 </div>
@@ -1550,15 +1568,17 @@ export function DebateRoom({
                     key={p.session_id}
                     className="flex items-center justify-between gap-2 text-xs"
                   >
-                    <span
-                      className="flex items-center gap-1.5 truncate"
+                    <button
+                      type="button"
+                      onClick={() => onOpenProfile?.(p.user_id)}
+                      className="flex items-center gap-1.5 truncate hover:underline text-left"
                       style={{ color: COLORS.ivory }}
                     >
                       {role === "co_host" && (
                         <Star size={12} style={{ color: COLORS.teal }} />
                       )}
                       {p.user_name || "Participant"}
-                    </span>
+                    </button>
                     <button
                       onClick={() => handleToggleCoHost(p.user_id, role)}
                       disabled={isLoadingThis}
@@ -1608,8 +1628,11 @@ export function DebateRoom({
                 className={`flex gap-2 ${isMe ? "flex-row-reverse" : "flex-row"}`}
               >
                 {!isMe && (
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs shrink-0 border overflow-hidden"
+                  <button
+                    type="button"
+                    onClick={() => !isAI && onOpenProfile?.(msg.sender_id)}
+                    disabled={isAI}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-xs shrink-0 border overflow-hidden disabled:cursor-default"
                     style={{
                       borderColor: isAI
                         ? "rgba(167,139,250,0.5)"
@@ -1632,7 +1655,7 @@ export function DebateRoom({
                     ) : (
                       profile.flag
                     )}
-                  </div>
+                  </button>
                 )}
                 <div
                   className={`max-w-[75%] px-4 py-2.5 rounded-2xl text-sm ${
@@ -1656,7 +1679,10 @@ export function DebateRoom({
                 >
                   {!isMe && (
                     <p
-                      className="text-[10px] font-bold mb-1"
+                      onClick={() => !isAI && onOpenProfile?.(msg.sender_id)}
+                      className={`text-[10px] font-bold mb-1 ${
+                        !isAI ? "cursor-pointer hover:underline" : ""
+                      }`}
                       style={{
                         color: isAI
                           ? "#a78bfa"
