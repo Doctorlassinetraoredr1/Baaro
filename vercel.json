@@ -4,6 +4,14 @@
   "framework": "vite",
   "rewrites": [
     {
+      "source": "/api/live-roles",
+      "destination": "/api/live"
+    },
+    {
+      "source": "/api/create-room",
+      "destination": "/api/live"
+    },
+    {
       "source": "/api/invite",
       "destination": "/api/referral"
     },
