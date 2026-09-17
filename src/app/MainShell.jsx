@@ -2,7 +2,7 @@ import { useState, useEffect, Suspense } from "react";
 import { useApp } from "../contexts/AppContext.jsx";
 import { Header } from "../components/Header.jsx";
 import { Navigation } from "../components/Navigation.jsx";
-import ProfileModal from "../components/ProfileModal.jsx"; // ✅ Chemin corrigé
+import ProfileModal from "../components/ProfileModal.jsx";
 import { NotificationDrawer } from "../components/NotificationDrawer.jsx";
 import { GlobalSearchModal } from "../components/GlobalSearchModal.jsx";
 import { ErrorBoundary } from "../components/ErrorBoundary.jsx";
@@ -43,7 +43,7 @@ export function MainShell() {
   const [lang, setLang] = useState("fr");
   const [currentTheme, setCurrentTheme] = useState("midnight");
   
-  // États des modales
+  // États des modales et de l'UI
   const [inspectingProfileId, setInspectingProfileId] = useState(null);
   const [notifDrawerOpen, setNotifDrawerOpen] = useState(false);
   const [searchModalOpen, setSearchModalOpen] = useState(false);
@@ -144,7 +144,7 @@ export function MainShell() {
           currentId={id}
           onClose={() => setInspectingProfileId(null)}
           onNavigateToMessages={() => setActiveTab("messages")}
-          // ✅ Redirige vers l'onglet Paramètres au lieu d'ouvrir une modale inexistante
+          // ✅ Redirige proprement vers l'onglet Paramètres au lieu d'ouvrir une modale inexistante
           onOpenSettings={() => {
             setInspectingProfileId(null);
             setActiveTab("settings");
@@ -162,7 +162,13 @@ export function MainShell() {
         isOpen={searchModalOpen} 
         onClose={() => setSearchModalOpen(false)} 
         onSelectUser={(profileId) => setInspectingProfileId(profileId)} 
-        onSelectTab={(tabId) => setActiveTab(tabId)} 
+        onSelectTab={(tabId) => setActiveTab(tabId)}
+        // ✅ Permet à la recherche globale d'ouvrir une boutique spécifique
+        onSelectShop={(shopId) => {
+          setActiveTab("shop");
+          // Note : Si ton composant Shop a besoin de l'ID de la boutique pour l'ouvrir directement,
+          // tu peux le stocker dans un état global ou le passer via un contexte ici.
+        }}
       />
     </div>
   );
