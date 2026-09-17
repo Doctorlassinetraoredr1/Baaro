@@ -1,263 +1,145 @@
--- BAARO 042 : Notifications temps réel + Triggers automatiques
+-- BAARO 042: Correction complète du système social (abonnements + amis + notifications)
 
--- ============================================
--- 1. CORRIGER user_id → id sur notifications
--- ============================================
+-- 1. Corriger les colonnes de la table follows (si nécessaire)
 DO $$
 BEGIN
+  -- Renommer 'following_id' en 'followed_id' si la dérive existe
   IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='notifications' AND column_name='user_id'
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'follows' AND column_name = 'following_id'
   ) AND NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='notifications' AND column_name='id'
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'follows' AND column_name = 'followed_id'
   ) THEN
-    ALTER TABLE public.notifications RENAME COLUMN user_id TO id;
+    ALTER TABLE public.follows RENAME COLUMN following_id TO followed_id;
   END IF;
+
+  -- Ajouter les colonnes manquantes
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'follows' AND column_name = 'status'
+  ) THEN
+    ALTER TABLE public.follows ADD COLUMN status text DEFAULT 'accepted';
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_schema = 'public' AND table_name = 'follows' AND column_name = 'is_friend'
+  ) THEN
+    ALTER TABLE public.follows ADD COLUMN is_friend boolean DEFAULT false;
+  END IF;
+
+  -- Normaliser les données existantes
+  UPDATE public.follows SET status = 'accepted' WHERE status IS NULL;
+  UPDATE public.follows SET is_friend = false WHERE is_friend IS NULL;
 END $$;
 
--- Ajouter les colonnes manquantes pour le typage
-DO $$
+-- 2. Créer la fonction get_user_friends (manquante dans votre base)
+CREATE OR REPLACE FUNCTION public.get_user_friends(id_param UUID)
+RETURNS TABLE(friend_id UUID)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='notifications' AND column_name='type'
-  ) THEN
-    ALTER TABLE public.notifications ADD COLUMN type TEXT DEFAULT 'general';
-  END IF;
+  RETURN QUERY
+  SELECT DISTINCT
+    CASE 
+      WHEN f.follower_id = id_param THEN f.followed_id
+      ELSE f.follower_id
+    END AS friend_id
+  FROM public.follows f
+  WHERE (f.follower_id = id_param OR f.followed_id = id_param)
+    AND f.status = 'accepted'
+    AND f.is_friend = true;
+END;
+$$;
 
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='notifications' AND column_name='source_id'
-  ) THEN
-    ALTER TABLE public.notifications ADD COLUMN source_id UUID;
+-- 3. Mettre à jour toggle_follow
+CREATE OR REPLACE FUNCTION public.toggle_follow(p_target UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_is_following BOOLEAN;
+BEGIN
+  IF p_target = auth.uid() THEN
+    RAISE EXCEPTION 'CANNOT_FOLLOW_SELF';
   END IF;
-
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_schema='public' AND table_name='notifications' AND column_name='actor_id'
-  ) THEN
-    ALTER TABLE public.notifications ADD COLUMN actor_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+  
+  IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_target) THEN
+    RAISE EXCEPTION 'TARGET_NOT_FOUND';
   END IF;
-END $$;
+  
+  SELECT EXISTS (
+    SELECT 1 FROM public.follows 
+    WHERE follower_id = auth.uid() AND followed_id = p_target AND status = 'accepted'
+  ) INTO v_is_following;
+  
+  IF v_is_following THEN
+    DELETE FROM public.follows 
+    WHERE follower_id = auth.uid() AND followed_id = p_target;
+    RETURN FALSE;
+  ELSE
+    INSERT INTO public.follows (follower_id, followed_id, status, is_friend)
+    VALUES (auth.uid(), p_target, 'accepted', false)
+    ON CONFLICT (follower_id, followed_id) DO UPDATE 
+    SET status = 'accepted', is_friend = false;
+    RETURN TRUE;
+  END IF;
+END;
+$$;
 
--- ============================================
--- 2. RLS + POLITIQUES
--- ============================================
+-- 4. Créer la table notifications si elle n'existe pas
+CREATE TABLE IF NOT EXISTS public.notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  actor_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+  type TEXT NOT NULL,
+  message TEXT,
+  read BOOLEAN DEFAULT false,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "notif_own_read" ON public.notifications;
-CREATE POLICY "notif_own_read" ON public.notifications
-  FOR SELECT USING (auth.uid() = id);
+DROP POLICY IF EXISTS "notifications_read" ON public.notifications;
+DROP POLICY IF EXISTS "notifications_insert" ON public.notifications;
 
-DROP POLICY IF EXISTS "notif_own_update" ON public.notifications;
-CREATE POLICY "notif_own_update" ON public.notifications
-  FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+CREATE POLICY "notifications_read" ON public.notifications 
+  FOR SELECT USING (auth.uid() = user_id);
 
-DROP POLICY IF EXISTS "notif_own_delete" ON public.notifications;
-CREATE POLICY "notif_own_delete" ON public.notifications
-  FOR DELETE USING (auth.uid() = id);
+CREATE POLICY "notifications_insert" ON public.notifications 
+  FOR INSERT WITH CHECK (auth.uid() = actor_id);
 
--- ============================================
--- 3. INDEX
--- ============================================
-CREATE INDEX IF NOT EXISTS idx_notifications_user_unread
-  ON public.notifications(id, created_at DESC)
-  WHERE read = false;
-
--- ============================================
--- 4. FONCTION HELPER : créer une notification
--- ============================================
-CREATE OR REPLACE FUNCTION public.create_notification(
-  p_target_id UUID,
-  p_actor_id UUID,
-  p_type TEXT,
-  p_message TEXT,
-  p_source_id UUID DEFAULT NULL
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-BEGIN
-  -- Ne pas notifier soi-même
-  IF p_target_id = p_actor_id THEN RETURN; END IF;
-  
-  -- Ne pas dupliquer (même source + même type dans les 5 dernières minutes)
-  IF p_source_id IS NOT NULL AND EXISTS (
-    SELECT 1 FROM public.notifications
-    WHERE id = p_target_id
-      AND type = p_type
-      AND source_id = p_source_id
-      AND created_at > NOW() - INTERVAL '5 minutes'
-  ) THEN RETURN; END IF;
-
-  INSERT INTO public.notifications (id, actor_id, type, message, source_id, read, created_at)
-  VALUES (p_target_id, p_actor_id, p_type, p_message, p_source_id, false, NOW());
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.create_notification(UUID, UUID, TEXT, TEXT, UUID) FROM PUBLIC, ANON;
-GRANT EXECUTE ON FUNCTION public.create_notification(UUID, UUID, TEXT, TEXT, UUID) TO AUTHENTICATED;
-
--- ============================================
--- 5. TRIGGER AUTO : réaction → notification
--- ============================================
-CREATE OR REPLACE FUNCTION public.notify_on_reaction()
+-- 5. Créer un trigger pour générer automatiquement les notifications de follow
+CREATE OR REPLACE FUNCTION public.create_follow_notification()
 RETURNS TRIGGER
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public
 AS $$
-DECLARE
-  v_post_author UUID;
-  v_actor_name TEXT;
 BEGIN
-  SELECT author_id INTO v_post_author FROM public.posts WHERE id = NEW.post_id;
-  SELECT COALESCE(full_name, display_name, handle, 'Quelqu''un') INTO v_actor_name
-    FROM public.profiles WHERE id = NEW.id;
-
-  PERFORM public.create_notification(
-    v_post_author,
-    NEW.id,
-    'reaction',
-    v_actor_name || ' a réagi ' || NEW.reaction || ' à votre publication',
-    NEW.post_id
-  );
+  IF TG_OP = 'INSERT' THEN
+    INSERT INTO public.notifications (user_id, actor_id, type, message)
+    VALUES (NEW.followed_id, NEW.follower_id, 'follow', 'a commencé à vous suivre')
+    ON CONFLICT DO NOTHING;
+  END IF;
   RETURN NEW;
 END;
 $$;
 
-DROP TRIGGER IF EXISTS trg_notify_reaction ON public.post_reactions;
-CREATE TRIGGER trg_notify_reaction
-  AFTER INSERT ON public.post_reactions
-  FOR EACH ROW EXECUTE FUNCTION public.notify_on_reaction();
+DROP TRIGGER IF EXISTS on_follow_created ON public.follows;
+CREATE TRIGGER on_follow_created
+AFTER INSERT ON public.follows
+FOR EACH ROW EXECUTE FUNCTION public.create_follow_notification();
 
--- ============================================
--- 6. TRIGGER AUTO : commentaire → notification
--- ============================================
-CREATE OR REPLACE FUNCTION public.notify_on_comment()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_post_author UUID;
-  v_actor_name TEXT;
-BEGIN
-  SELECT author_id INTO v_post_author FROM public.posts WHERE id = NEW.post_id;
-  SELECT COALESCE(full_name, display_name, handle, 'Quelqu''un') INTO v_actor_name
-    FROM public.profiles WHERE id = NEW.author_id;
+-- 6. Index pour optimiser les performances
+CREATE INDEX IF NOT EXISTS idx_follows_followed ON public.follows (followed_id, status);
+CREATE INDEX IF NOT EXISTS idx_follows_follower ON public.follows (follower_id, status);
+CREATE INDEX IF NOT EXISTS idx_notifications_user ON public.notifications (user_id, created_at DESC);
 
-  PERFORM public.create_notification(
-    v_post_author,
-    NEW.author_id,
-    'comment',
-    v_actor_name || ' a commenté votre publication',
-    NEW.post_id
-  );
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_notify_comment ON public.comments;
-CREATE TRIGGER trg_notify_comment
-  AFTER INSERT ON public.comments
-  FOR EACH ROW EXECUTE FUNCTION public.notify_on_comment();
-
--- ============================================
--- 7. TRIGGER AUTO : follow → notification
--- ============================================
-CREATE OR REPLACE FUNCTION public.notify_on_follow()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_actor_name TEXT;
-BEGIN
-  SELECT COALESCE(full_name, display_name, handle, 'Quelqu''un') INTO v_actor_name
-    FROM public.profiles WHERE id = NEW.follower_id;
-
-  PERFORM public.create_notification(
-    NEW.followed_id,
-    NEW.follower_id,
-    'follow',
-    v_actor_name || ' vous suit maintenant',
-    NULL
-  );
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_notify_follow ON public.follows;
-CREATE TRIGGER trg_notify_follow
-  AFTER INSERT ON public.follows
-  FOR EACH ROW EXECUTE FUNCTION public.notify_on_follow();
-
--- ============================================
--- 8. TRIGGER AUTO : vote sondage → notification
--- ============================================
-CREATE OR REPLACE FUNCTION public.notify_on_poll_vote()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-  v_post_id UUID;
-  v_post_author UUID;
-  v_actor_name TEXT;
-  v_question TEXT;
-BEGIN
-  SELECT post_id INTO v_post_id FROM public.polls WHERE id = NEW.poll_id;
-  SELECT author_id INTO v_post_author FROM public.posts WHERE id = v_post_id;
-  SELECT question INTO v_question FROM public.polls WHERE id = NEW.poll_id;
-  SELECT COALESCE(full_name, display_name, handle, 'Quelqu''un') INTO v_actor_name
-    FROM public.profiles WHERE id = NEW.id;
-
-  PERFORM public.create_notification(
-    v_post_author,
-    NEW.id,
-    'poll_vote',
-    v_actor_name || ' a voté à votre sondage : ' || LEFT(v_question, 50),
-    v_post_id
-  );
-  RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS trg_notify_poll_vote ON public.poll_votes;
-CREATE TRIGGER trg_notify_poll_vote
-  AFTER INSERT ON public.poll_votes
-  FOR EACH ROW EXECUTE FUNCTION public.notify_on_poll_vote();
-
--- ============================================
--- 9. REALTIME
--- ============================================
-DO $$
-BEGIN
-  ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
-EXCEPTION WHEN duplicate_object THEN NULL;
-END $$;
-
-ALTER TABLE public.notifications REPLICA IDENTITY FULL;
-
--- ============================================
--- 10. FONCTION : compter les non-lues
--- ============================================
-CREATE OR REPLACE FUNCTION public.get_unread_notification_count()
-RETURNS INT
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-  SELECT COUNT(*)::INT FROM public.notifications
-  WHERE id = auth.uid() AND read = false;
-$$;
-
-REVOKE ALL ON FUNCTION public.get_unread_notification_count() FROM PUBLIC, ANON;
-GRANT EXECUTE ON FUNCTION public.get_unread_notification_count() TO AUTHENTICATED;
+-- 7. Permissions
+REVOKE ALL ON FUNCTION public.get_user_friends(UUID) FROM PUBLIC, ANON;
+GRANT EXECUTE ON FUNCTION public.get_user_friends(UUID) TO AUTHENTICATED;
