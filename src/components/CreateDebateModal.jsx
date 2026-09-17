@@ -66,7 +66,7 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
 
   if (!isOpen) return null;
 
-  const generateInviteCode = () => randomCode(6);
+  const generateInviteCode = () => randomCode(6).toLowerCase();
 
   /** Mode qui nécessite Daily.co */
   const needsDaily = (m) => m === "audio" || m === "video" || m === "hybrid";
@@ -79,34 +79,39 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
 
   const handleCreate = async (e) => {
     if (e) {
-      e.preventDefault?.();
-      e.stopPropagation?.();
+      try {
+        e.preventDefault();
+        e.stopPropagation();
+      } catch (_) {}
     }
-    if (!title.trim() || !topic.trim()) {
+
+    const titleVal = title.trim();
+    const topicVal = topic.trim();
+    if (!titleVal || !topicVal) {
       setError("Indique un titre et un thème.");
       return;
     }
+
     setLoading(true);
     setError(null);
 
     try {
       const {
         data: { session },
+        error: sessErr,
       } = await supabase.auth.getSession();
-
-      if (!session?.access_token) {
-        throw new Error("Session expirée. Rechargez la page.");
+      if (sessErr) throw sessErr;
+      if (!session?.access_token || !session.user?.id) {
+        throw new Error("Session expirée. Recharge la page.");
       }
 
-      const uid = currentUserId || session.user?.id;
-      if (!uid) {
-        throw new Error("Session introuvable. Recharge la page ou reconnecte-toi.");
-      }
+      // RLS exige host_id = auth.uid() → toujours session.user.id
+      const uid = session.user.id;
 
       let room = null;
       const finalMode = dbMode(mode);
       const topicWithHybrid =
-        mode === "hybrid" ? `${topic.trim()} · ⚡ Tout-en-un` : topic.trim();
+        mode === "hybrid" ? `${topicVal} · ⚡ Tout-en-un` : topicVal;
 
       if (needsDaily(mode)) {
         const res = await fetch(`${API_BASE}/api/create-room`, {
@@ -119,45 +124,43 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
             action: "create-room",
             userName: "Hôte",
             enableHLS: false,
-            title: title.trim(),
+            title: titleVal,
             topic: topicWithHybrid,
             mode: finalMode,
           }),
         });
 
-        let dailyData;
+        let dailyData = {};
         try {
           dailyData = await res.json();
         } catch {
           throw new Error(`Réponse serveur invalide (${res.status}).`);
         }
-
         if (!res.ok) {
           throw new Error(
             dailyData.error || `Création salle impossible (${res.status}).`
           );
         }
 
-        const inviteCode = dailyData.inviteCode;
+        const inviteCode = String(dailyData.inviteCode || "").toLowerCase();
         const dailyRoomName = dailyData.roomName;
 
         let updatedRoom = null;
-        const { data: upd, error: updateError } = await supabase
-          .from("debate_rooms")
-          .update({
-            title: title.trim(),
-            topic: topicWithHybrid,
-            mode: finalMode,
-            max_participants: 12,
-            status: "active",
-          })
-          .eq("invite_code", inviteCode)
-          .select()
-          .maybeSingle();
-
-        if (updateError) console.warn("Update room meta:", updateError);
-        updatedRoom = upd;
-
+        if (inviteCode) {
+          const { data: upd } = await supabase
+            .from("debate_rooms")
+            .update({
+              title: titleVal,
+              topic: topicWithHybrid,
+              mode: finalMode,
+              max_participants: 12,
+              status: "active",
+            })
+            .eq("invite_code", inviteCode)
+            .select()
+            .maybeSingle();
+          updatedRoom = upd;
+        }
         if (!updatedRoom && dailyData.roomId) {
           const { data: fetched } = await supabase
             .from("debate_rooms")
@@ -166,54 +169,56 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
             .maybeSingle();
           updatedRoom = fetched;
         }
-
-        if (!updatedRoom) {
-          updatedRoom = {
+        room =
+          updatedRoom || {
             id: dailyData.roomId,
             invite_code: inviteCode,
             daily_room_name: dailyRoomName,
-            title: title.trim(),
+            title: titleVal,
             topic: topicWithHybrid,
             mode: finalMode,
             status: "active",
             host_id: uid,
           };
-        }
-        room = updatedRoom;
       } else {
-        // Mode texte pur
+        // Mode texte — insert direct (RLS: host_id = auth.uid())
         const inviteCode = generateInviteCode();
         const { data: newRoom, error: roomError } = await supabase
           .from("debate_rooms")
           .insert({
-            title: title.trim(),
-            topic: topic.trim(),
+            title: titleVal,
+            topic: topicVal,
             mode: "text",
             invite_code: inviteCode,
             host_id: uid,
             status: "active",
             max_participants: 12,
           })
-          .select()
+          .select("id, title, topic, mode, invite_code, status, host_id")
           .single();
 
-        if (roomError) throw roomError;
+        if (roomError) {
+          throw new Error(
+            roomError.message +
+              (roomError.details ? ` (${roomError.details})` : "") +
+              (roomError.hint ? ` — ${roomError.hint}` : "")
+          );
+        }
         room = newRoom;
 
-        const { error: partErr } = await supabase.from("debate_participants").upsert({
-          room_id: room.id,
-          user_id: uid,
-          role: "host",
-        });
+        const { error: partErr } = await supabase
+          .from("debate_participants")
+          .upsert(
+            { room_id: room.id, user_id: uid, role: "host" },
+            { onConflict: "room_id,user_id" }
+          );
         if (partErr) {
-          // schéma alternatif id au lieu de user_id
-          const { error: partErr2 } = await supabase.from("debate_participants").upsert({
-            room_id: room.id,
-            id: uid,
-            role: "host",
-          });
-          if (partErr2) console.warn("participant:", partErr2.message || partErr.message);
+          console.warn("participant:", partErr.message);
         }
+      }
+
+      if (!room?.invite_code && !room?.id) {
+        throw new Error("Salle créée mais réponse incomplète.");
       }
 
       onSuccess?.(room);
@@ -226,10 +231,8 @@ export function CreateDebateModal({ isOpen, onClose, currentUserId, onSuccess })
       const msg =
         err?.message ||
         err?.error_description ||
-        (typeof err === "string" ? err : null) ||
-        "Impossible de créer le débat";
-      const detail = err?.details || err?.hint || "";
-      setError(detail ? `${msg} — ${detail}` : msg);
+        (typeof err === "string" ? err : "Impossible de créer le débat");
+      setError(String(msg));
     } finally {
       setLoading(false);
     }

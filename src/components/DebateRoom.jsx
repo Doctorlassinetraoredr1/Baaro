@@ -268,18 +268,42 @@ export function DebateRoom({
 
     const loadDebate = async () => {
       try {
-        const { data: roomData, error: roomError } = await supabase
-          .from("debate_rooms")
-          .select(
-            "id, title, topic, mode, invite_code, status, created_at, host_id, daily_room_name"
-          )
-          .ilike("invite_code", inviteCode)
-          .in("status", ["active", "paused"])
-          .maybeSingle();
+        const code = String(inviteCode || "").trim();
+        let roomData = null;
 
-        if (roomError || !roomData) {
+        // 1) Porte d'entrée officielle (security definer)
+        const { data: rpcRoom, error: rpcErr } = await supabase.rpc(
+          "join_debate_by_code",
+          { p_code: code }
+        );
+        if (!rpcErr && rpcRoom) {
+          roomData = Array.isArray(rpcRoom) ? rpcRoom[0] : rpcRoom;
+        }
+
+        // 2) Fallback hôte / participant (lecture RLS)
+        if (!roomData) {
+          const isUuid =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+              code
+            );
+          let q = supabase
+            .from("debate_rooms")
+            .select(
+              "id, title, topic, mode, invite_code, status, created_at, host_id, daily_room_name"
+            )
+            .in("status", ["active", "paused"]);
+          q = isUuid ? q.eq("id", code) : q.ilike("invite_code", code);
+          const { data: selRoom, error: roomError } = await q.maybeSingle();
+          if (roomError) console.warn("debate_rooms select:", roomError.message);
+          roomData = selRoom;
+        }
+
+        if (!roomData) {
           if (isMounted) {
-            setError("Salle introuvable");
+            setError(
+              rpcErr?.message ||
+                "Salle introuvable. Vérifie le code ou recrée le live."
+            );
             setLoading(false);
           }
           return;
