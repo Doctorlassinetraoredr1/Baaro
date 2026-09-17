@@ -4,6 +4,7 @@ import { supabase } from "../supabaseClient";
 export const useSocial = (id) => {
   const [friends, setFriends] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
 
   const fetchFriends = useCallback(async () => {
     if (!id) {
@@ -11,13 +12,23 @@ export const useSocial = (id) => {
       return;
     }
     setLoading(true);
+    setError(null);
+    
     try {
-      // Appel de la fonction RPC (nécessite la migration SQL fournie précédemment)
+      console.log('📡 useSocial: Appel RPC avec id =', id);
+      
       const { data, error } = await supabase.rpc("get_user_friends", {
-        id_param: id,
+        user_id: id,
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error("❌ useSocial: Erreur RPC:", error);
+        setError(error.message);
+        setFriends([]);
+        return;
+      }
+
+      console.log("✅ useSocial: Données RPC reçues:", data);
 
       if (!data || data.length === 0) {
         setFriends([]);
@@ -25,40 +36,43 @@ export const useSocial = (id) => {
       }
 
       const friendIds = data.map(f => f.friend_id).filter(Boolean);
+      console.log("🔗 useSocial: friendIds:", friendIds);
 
       if (friendIds.length === 0) {
         setFriends([]);
         return;
       }
 
-      // ✅ CORRECTION 1 : Utiliser les VRAIS noms de colonnes de votre table 'profiles'
-      // (display_name, handle, avatar_url, flag) au lieu de username/full_name qui n'existent pas.
       const { data: profiles, error: profilesError } = await supabase
         .from("profiles")
         .select("id, display_name, handle, avatar_url, flag")
         .in("id", friendIds);
 
-      if (profilesError) throw profilesError;
+      if (profilesError) {
+        console.error("❌ useSocial: Erreur profils:", profilesError);
+        throw profilesError;
+      }
 
-      // ✅ CORRECTION 2 : Mapper les données pour qu'elles correspondent exactement 
-      // à ce qu'attend votre composant FriendsTab (friend.username, friend.avatar_url, etc.)
+      console.log("👤 useSocial: Profils trouvés:", profiles);
+
       const mappedFriends = (profiles || []).map(profile => ({
         id: profile.id,
         username: profile.display_name || profile.handle || "Membre",
         avatar_url: profile.avatar_url,
-        full_name: profile.display_name, // Rétrocompatibilité
+        full_name: profile.display_name,
         handle: profile.handle,
         flag: profile.flag,
       }));
 
       setFriends(mappedFriends);
     } catch (err) {
-      console.error("Erreur chargement amis :", err.message);
+      console.error(" useSocial: Erreur chargement amis:", err);
+      setError(err.message);
       setFriends([]);
     } finally {
       setLoading(false);
     }
   }, [id]);
 
-  return { friends, fetchFriends, loading };
+  return { friends, fetchFriends, loading, error };
 };
