@@ -16,6 +16,11 @@ import {
   FileText,
   Download,
   Image as ImageIcon,
+  Check,
+  CheckCheck,
+  Pencil,
+  Trash2,
+  SmilePlus,
 } from "lucide-react";
 import { COLORS } from "../theme.js";
 import { supabase } from "../supabaseClient.js";
@@ -41,8 +46,16 @@ import {
 } from "../lib/chatCalls.js";
 import { ChatCallModal } from "./ChatCallModal.jsx";
 
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+const ONLINE_WINDOW_MS = 70 * 1000; // considéré "en ligne" si vu il y a < 70s
+const HEARTBEAT_MS = 25 * 1000;
+const TYPING_IDLE_MS = 3000;
+const TYPING_SEND_THROTTLE_MS = 1500;
+
 /**
  * Messages + liste d'amis + recherche + vocaux + fichiers + appels
+ * + statut en ligne/vu, "en train d'écrire…", édition/suppression,
+ * réactions, recherche dans la conversation.
  */
 export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
   const [id, setId] = useState(propId || null);
@@ -65,6 +78,16 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
   // Appels
   const [callState, setCallState] = useState(null); // { mode, callType, callRecord, roomUrl, token, otherUser, isCaller }
 
+  // --- Nouveautés messagerie ---
+  const [otherLastSeen, setOtherLastSeen] = useState(null);
+  const [isOtherTyping, setIsOtherTyping] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingText, setEditingText] = useState("");
+  const [messageReactions, setMessageReactions] = useState({}); // { [messageId]: [{user_id, emoji}] }
+  const [reactionPickerFor, setReactionPickerFor] = useState(null);
+  const [showChatSearch, setShowChatSearch] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+
   const messagesEndRef = useRef(null);
   const profilesCache = useRef({});
   const fileInputRef = useRef(null);
@@ -72,6 +95,9 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
   const recordChunksRef = useRef([]);
   const recordTimerRef = useRef(null);
   const recordStartRef = useRef(null);
+  const typingChannelRef = useRef(null);
+  const typingClearTimeoutRef = useRef(null);
+  const lastTypingSentRef = useRef(0);
 
   useEffect(() => {
     if (propId) {
@@ -126,7 +152,7 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
           };
           const { data: msgs } = await supabase
             .from("messages")
-            .select("text, created_at, sender_id, type, file_name")
+            .select("text, created_at, sender_id, type, file_name, deleted_at")
             .eq("conversation_id", c.id)
             .order("created_at", { ascending: false })
             .limit(1);
@@ -224,34 +250,183 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
     return () => supabase.removeChannel(channel);
   }, [id, fetchProfiles]);
 
+  // Heartbeat "en ligne" — met à jour profiles.last_seen_at régulièrement
+  useEffect(() => {
+    if (!id) return;
+    const ping = () => {
+      supabase
+        .from("profiles")
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq("id", id)
+        .then(() => {}, () => {});
+    };
+    ping();
+    const iv = setInterval(ping, HEARTBEAT_MS);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") ping();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(iv);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [id]);
+
+  // Statut en ligne / "vu" de l'autre personne dans la conversation active
+  useEffect(() => {
+    if (!activeChat?.otherUserId) {
+      setOtherLastSeen(null);
+      return;
+    }
+    let active = true;
+    const fetchLastSeen = async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("last_seen_at")
+        .eq("id", activeChat.otherUserId)
+        .single();
+      if (active) setOtherLastSeen(data?.last_seen_at || null);
+    };
+    fetchLastSeen();
+    const iv = setInterval(fetchLastSeen, 20000);
+    const channel = supabase
+      .channel(`presence_${activeChat.otherUserId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${activeChat.otherUserId}`,
+        },
+        (payload) => {
+          if (active) setOtherLastSeen(payload.new.last_seen_at);
+        }
+      )
+      .subscribe();
+    return () => {
+      active = false;
+      clearInterval(iv);
+      supabase.removeChannel(channel);
+    };
+  }, [activeChat?.otherUserId]);
+
+  // "En train d'écrire…" — canal broadcast par conversation
+  useEffect(() => {
+    if (!activeChat?.id) {
+      typingChannelRef.current = null;
+      return;
+    }
+    setIsOtherTyping(false);
+    const channel = supabase
+      .channel(`typing_${activeChat.id}`, {
+        config: { broadcast: { self: false } },
+      })
+      .on("broadcast", { event: "typing" }, (payload) => {
+        if (payload.payload?.userId !== activeChat.otherUserId) return;
+        setIsOtherTyping(true);
+        clearTimeout(typingClearTimeoutRef.current);
+        typingClearTimeoutRef.current = setTimeout(
+          () => setIsOtherTyping(false),
+          TYPING_IDLE_MS
+        );
+      })
+      .subscribe();
+    typingChannelRef.current = channel;
+    return () => {
+      supabase.removeChannel(channel);
+      clearTimeout(typingClearTimeoutRef.current);
+      typingChannelRef.current = null;
+    };
+  }, [activeChat?.id, activeChat?.otherUserId]);
+
+  const handleTypingInput = (value) => {
+    setNewMessage(value);
+    if (!typingChannelRef.current || !id) return;
+    const now = Date.now();
+    if (now - lastTypingSentRef.current < TYPING_SEND_THROTTLE_MS) return;
+    lastTypingSentRef.current = now;
+    typingChannelRef.current.send({
+      type: "broadcast",
+      event: "typing",
+      payload: { userId: id },
+    });
+  };
+
+  // Messages de la conversation active (+ réactions) et Realtime INSERT/UPDATE/DELETE
   useEffect(() => {
     if (!activeChat?.id) return;
     const fetchMessages = async () => {
       const { data, error } = await supabase
         .from("messages")
         .select(
-          "id, text, created_at, sender_id, type, media_url, media_mime, media_size, media_duration, file_name, thumbnail_url"
+          "id, text, created_at, sender_id, type, media_url, media_mime, media_size, media_duration, file_name, thumbnail_url, read_at, edited_at, deleted_at"
         )
         .eq("conversation_id", activeChat.id)
         .order("created_at", { ascending: true })
         .limit(200);
       if (!error) setMessages(data || []);
+
+      const { data: reacts } = await supabase
+        .from("message_reactions")
+        .select("message_id, user_id, emoji")
+        .eq("conversation_id", activeChat.id);
+      const grouped = {};
+      (reacts || []).forEach((r) => {
+        grouped[r.message_id] = grouped[r.message_id] || [];
+        grouped[r.message_id].push(r);
+      });
+      setMessageReactions(grouped);
     };
     fetchMessages();
+
     const channel = supabase
       .channel(`room_${activeChat.id}`)
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "messages",
           filter: `conversation_id=eq.${activeChat.id}`,
         },
         (payload) => {
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === payload.new.id)) return prev;
-            return [...prev, payload.new];
+          if (payload.eventType === "INSERT") {
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === payload.new.id)) return prev;
+              return [...prev, payload.new];
+            });
+          } else if (payload.eventType === "UPDATE") {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === payload.new.id ? payload.new : m))
+            );
+          } else if (payload.eventType === "DELETE") {
+            setMessages((prev) => prev.filter((m) => m.id !== payload.old.id));
+          }
+        }
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "message_reactions",
+          filter: `conversation_id=eq.${activeChat.id}`,
+        },
+        (payload) => {
+          setMessageReactions((prev) => {
+            const next = { ...prev };
+            if (payload.eventType === "INSERT") {
+              const r = payload.new;
+              next[r.message_id] = [...(next[r.message_id] || []), r];
+            } else if (payload.eventType === "DELETE") {
+              const r = payload.old;
+              next[r.message_id] = (next[r.message_id] || []).filter(
+                (x) =>
+                  !(x.user_id === r.user_id && x.emoji === r.emoji)
+              );
+            }
+            return next;
           });
         }
       )
@@ -261,9 +436,25 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
     };
   }, [activeChat]);
 
+  // Marquer comme "vu" les messages reçus non lus
   useEffect(() => {
+    if (!activeChat?.id || !id) return;
+    const unread = messages.filter(
+      (m) => m.sender_id !== id && !m.read_at && !m.deleted_at
+    );
+    if (unread.length === 0) return;
+    const ids = unread.map((m) => m.id);
+    supabase
+      .from("messages")
+      .update({ read_at: new Date().toISOString() })
+      .in("id", ids)
+      .then(() => {}, () => {});
+  }, [messages, activeChat?.id, id]);
+
+  useEffect(() => {
+    if (showChatSearch) return; // ne pas auto-scroll pendant une recherche
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, showChatSearch]);
 
   // ---- Amis ----
   const loadFriends = useCallback(async () => {
@@ -659,6 +850,85 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
     }
   };
 
+  // ---- Édition / suppression de message ----
+  const startEditMessage = (msg) => {
+    setReactionPickerFor(null);
+    setEditingMessageId(msg.id);
+    setEditingText(msg.text || "");
+  };
+
+  const cancelEditMessage = () => {
+    setEditingMessageId(null);
+    setEditingText("");
+  };
+
+  const submitEditMessage = async (e) => {
+    e?.preventDefault?.();
+    if (!editingMessageId) return;
+    const text = editingText.trim();
+    if (!text) return;
+    try {
+      const { error } = await supabase
+        .from("messages")
+        .update({ text, edited_at: new Date().toISOString() })
+        .eq("id", editingMessageId)
+        .eq("sender_id", id);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Erreur édition:", err);
+      alert("Impossible de modifier ce message.");
+    } finally {
+      setEditingMessageId(null);
+      setEditingText("");
+    }
+  };
+
+  const deleteMessage = async (msg) => {
+    if (!window.confirm("Supprimer ce message ?")) return;
+    try {
+      const { error } = await supabase
+        .from("messages")
+        .update({
+          deleted_at: new Date().toISOString(),
+          text: null,
+          media_url: null,
+        })
+        .eq("id", msg.id)
+        .eq("sender_id", id);
+      if (error) throw error;
+    } catch (err) {
+      console.error("Erreur suppression:", err);
+      alert("Impossible de supprimer ce message.");
+    }
+  };
+
+  // ---- Réactions ----
+  const toggleReaction = async (messageId, emoji) => {
+    setReactionPickerFor(null);
+    const already = (messageReactions[messageId] || []).some(
+      (r) => r.user_id === id && r.emoji === emoji
+    );
+    try {
+      if (already) {
+        await supabase
+          .from("message_reactions")
+          .delete()
+          .eq("message_id", messageId)
+          .eq("user_id", id)
+          .eq("emoji", emoji);
+      } else {
+        await supabase.from("message_reactions").insert({
+          message_id: messageId,
+          conversation_id: activeChat.id,
+          user_id: id,
+          emoji,
+        });
+      }
+    } catch (err) {
+      console.error("Erreur réaction:", err);
+    }
+  };
+
   // ---- Rendu d'un message ----
   const renderMessageContent = (msg, isMe) => {
     const type = msg.type || "text";
@@ -937,6 +1207,30 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
 
   // --- Conversation active ---
   if (activeChat) {
+    const isOtherOnline =
+      otherLastSeen &&
+      Date.now() - new Date(otherLastSeen).getTime() < ONLINE_WINDOW_MS;
+
+    let statusLabel = "";
+    if (isOtherTyping) statusLabel = "en train d'écrire…";
+    else if (isOtherOnline) statusLabel = "En ligne";
+    else if (otherLastSeen)
+      statusLabel = `Vu à ${new Date(otherLastSeen).toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+      })}`;
+
+    const visibleMessages =
+      showChatSearch && chatSearchQuery.trim()
+        ? messages.filter(
+            (m) =>
+              !m.deleted_at &&
+              (m.text || "")
+                .toLowerCase()
+                .includes(chatSearchQuery.trim().toLowerCase())
+          )
+        : messages;
+
     return (
       <>
         {callState && (
@@ -965,6 +1259,8 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
               onClick={() => {
                 setActiveChat(null);
                 setMessages([]);
+                setShowChatSearch(false);
+                setChatSearchQuery("");
                 fetchConversations();
               }}
               className="p-2 rounded-full hover:bg-white/10"
@@ -973,17 +1269,25 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
               <ArrowLeft size={20} />
             </button>
             <div
-              className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center overflow-hidden text-sm cursor-pointer"
+              className="relative w-9 h-9 shrink-0"
               onClick={() => onOpenProfile?.(activeChat.otherUserId)}
             >
-              {activeChat.otherUserAvatar ? (
-                <img
-                  src={activeChat.otherUserAvatar}
-                  className="w-full h-full object-cover"
-                  alt=""
+              <div className="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center overflow-hidden text-sm cursor-pointer">
+                {activeChat.otherUserAvatar ? (
+                  <img
+                    src={activeChat.otherUserAvatar}
+                    className="w-full h-full object-cover"
+                    alt=""
+                  />
+                ) : (
+                  activeChat.otherUserFlag || "🌍"
+                )}
+              </div>
+              {isOtherOnline && (
+                <span
+                  className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2"
+                  style={{ background: "#22c55e", borderColor: COLORS.bg || "#0B1220" }}
                 />
-              ) : (
-                activeChat.otherUserFlag || "🌍"
               )}
             </div>
             <div
@@ -993,7 +1297,29 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
               <p className="font-bold text-sm truncate" style={{ color: COLORS.ivory }}>
                 {activeChat.otherUserName}
               </p>
+              {statusLabel && (
+                <p
+                  className={`text-[11px] truncate ${
+                    isOtherTyping ? "italic" : ""
+                  }`}
+                  style={{ color: isOtherOnline ? "#22c55e" : COLORS.muted }}
+                >
+                  {statusLabel}
+                </p>
+              )}
             </div>
+            {/* Recherche dans la conversation */}
+            <button
+              onClick={() => {
+                setShowChatSearch((v) => !v);
+                if (showChatSearch) setChatSearchQuery("");
+              }}
+              className="p-2 rounded-full hover:bg-white/10"
+              style={{ color: showChatSearch ? COLORS.gold : COLORS.muted }}
+              title="Rechercher dans la conversation"
+            >
+              <Search size={18} />
+            </button>
             {/* Boutons appel */}
             <button
               onClick={() => startOutgoingCall("voice")}
@@ -1013,41 +1339,226 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
             </button>
           </div>
 
+          {showChatSearch && (
+            <div
+              className="px-3 py-2 border-b"
+              style={{ borderColor: COLORS.border }}
+            >
+              <div className="relative">
+                <Search
+                  size={14}
+                  className="absolute left-3 top-1/2 -translate-y-1/2"
+                  style={{ color: COLORS.muted }}
+                />
+                <input
+                  type="search"
+                  autoFocus
+                  value={chatSearchQuery}
+                  onChange={(e) => setChatSearchQuery(e.target.value)}
+                  placeholder="Rechercher dans cette conversation…"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg border text-sm outline-none"
+                  style={{
+                    background: COLORS.surface2,
+                    borderColor: COLORS.border,
+                    color: COLORS.ivory,
+                  }}
+                />
+              </div>
+              {chatSearchQuery.trim() && (
+                <p className="text-[11px] mt-1" style={{ color: COLORS.muted }}>
+                  {visibleMessages.length} résultat
+                  {visibleMessages.length > 1 ? "s" : ""}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-            {messages.length === 0 && (
+            {visibleMessages.length === 0 && !showChatSearch && (
               <p className="text-center text-sm py-10" style={{ color: COLORS.muted }}>
                 Début de la conversation — dis bonjour 👋
               </p>
             )}
-            {messages.map((msg) => {
+            {visibleMessages.length === 0 &&
+              showChatSearch &&
+              chatSearchQuery.trim() && (
+                <p className="text-center text-sm py-10" style={{ color: COLORS.muted }}>
+                  Aucun message ne correspond à « {chatSearchQuery.trim()} »
+                </p>
+              )}
+            {visibleMessages.map((msg) => {
               const isMe = msg.sender_id === id;
+              const isDeleted = !!msg.deleted_at;
+              const isEditing = editingMessageId === msg.id;
+              const reactions = messageReactions[msg.id] || [];
+              const groupedReactions = {};
+              reactions.forEach((r) => {
+                groupedReactions[r.emoji] = groupedReactions[r.emoji] || [];
+                groupedReactions[r.emoji].push(r.user_id);
+              });
+
               return (
                 <div
                   key={msg.id}
-                  className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+                  className={`flex flex-col ${isMe ? "items-end" : "items-start"}`}
                 >
                   <div
-                    className={`max-w-[80%] px-3 py-2.5 rounded-2xl text-sm ${
-                      isMe ? "rounded-tr-sm" : "rounded-tl-sm"
+                    className={`flex items-end gap-1 max-w-[85%] ${
+                      isMe ? "flex-row-reverse" : "flex-row"
                     }`}
-                    style={{
-                      background: isMe ? COLORS.gold : COLORS.surface2,
-                      color: isMe ? "#000" : COLORS.ivory,
-                    }}
                   >
-                    {renderMessageContent(msg, isMe)}
-                    <p
-                      className={`text-[10px] mt-1 ${
-                        isMe ? "text-black/60" : "text-gray-400"
+                    <div
+                      className={`max-w-full px-3 py-2.5 rounded-2xl text-sm ${
+                        isMe ? "rounded-tr-sm" : "rounded-tl-sm"
+                      }`}
+                      style={{
+                        background: isMe ? COLORS.gold : COLORS.surface2,
+                        color: isMe ? "#000" : COLORS.ivory,
+                        opacity: isDeleted ? 0.6 : 1,
+                      }}
+                    >
+                      {isDeleted ? (
+                        <p className="italic text-sm">🚫 Message supprimé</p>
+                      ) : isEditing ? (
+                        <form onSubmit={submitEditMessage} className="flex flex-col gap-1.5">
+                          <input
+                            autoFocus
+                            value={editingText}
+                            onChange={(e) => setEditingText(e.target.value)}
+                            className="px-2 py-1 rounded-lg text-sm outline-none border"
+                            style={{
+                              background: "rgba(255,255,255,0.15)",
+                              borderColor: "rgba(0,0,0,0.2)",
+                              color: isMe ? "#000" : COLORS.ivory,
+                            }}
+                          />
+                          <div className="flex gap-2 justify-end text-[11px] font-bold">
+                            <button
+                              type="button"
+                              onClick={cancelEditMessage}
+                              className="opacity-70"
+                            >
+                              Annuler
+                            </button>
+                            <button type="submit">Enregistrer</button>
+                          </div>
+                        </form>
+                      ) : (
+                        renderMessageContent(msg, isMe)
+                      )}
+                      {!isDeleted && !isEditing && (
+                        <p
+                          className={`text-[10px] mt-1 flex items-center gap-1 ${
+                            isMe ? "text-black/60 justify-end" : "text-gray-400"
+                          }`}
+                        >
+                          {new Date(msg.created_at).toLocaleTimeString([], {
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })}
+                          {msg.edited_at && <span>· modifié</span>}
+                          {isMe &&
+                            (msg.read_at ? (
+                              <CheckCheck size={12} style={{ color: "#2563eb" }} />
+                            ) : (
+                              <Check size={12} className="opacity-60" />
+                            ))}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Actions : réagir, modifier, supprimer */}
+                    {!isDeleted && !isEditing && (
+                      <div className="flex flex-col gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReactionPickerFor(
+                              reactionPickerFor === msg.id ? null : msg.id
+                            )
+                          }
+                          className="p-1 rounded-full hover:bg-white/10"
+                          style={{ color: COLORS.muted }}
+                          title="Réagir"
+                        >
+                          <SmilePlus size={14} />
+                        </button>
+                        {isMe && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => startEditMessage(msg)}
+                              className="p-1 rounded-full hover:bg-white/10"
+                              style={{ color: COLORS.muted }}
+                              title="Modifier"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteMessage(msg)}
+                              className="p-1 rounded-full hover:bg-white/10"
+                              style={{ color: "#EF4444" }}
+                              title="Supprimer"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Sélecteur d'emoji */}
+                  {reactionPickerFor === msg.id && (
+                    <div
+                      className="flex gap-1 mt-1 p-1.5 rounded-full border"
+                      style={{ background: COLORS.surface, borderColor: COLORS.border }}
+                    >
+                      {QUICK_REACTIONS.map((emoji) => (
+                        <button
+                          key={emoji}
+                          type="button"
+                          onClick={() => toggleReaction(msg.id, emoji)}
+                          className="text-lg leading-none px-1 hover:scale-125 transition-transform"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Réactions affichées */}
+                  {Object.keys(groupedReactions).length > 0 && (
+                    <div
+                      className={`flex flex-wrap gap-1 mt-1 ${
+                        isMe ? "justify-end" : "justify-start"
                       }`}
                     >
-                      {new Date(msg.created_at).toLocaleTimeString([], {
-                        hour: "2-digit",
-                        minute: "2-digit",
+                      {Object.entries(groupedReactions).map(([emoji, userIds]) => {
+                        const mine = userIds.includes(id);
+                        return (
+                          <button
+                            key={emoji}
+                            type="button"
+                            onClick={() => toggleReaction(msg.id, emoji)}
+                            className="text-xs px-2 py-0.5 rounded-full border flex items-center gap-1"
+                            style={{
+                              background: mine
+                                ? "rgba(217,174,82,0.2)"
+                                : COLORS.surface2,
+                              borderColor: mine ? COLORS.borderGold : COLORS.border,
+                              color: mine ? COLORS.gold : COLORS.muted,
+                            }}
+                          >
+                            <span>{emoji}</span>
+                            <span>{userIds.length}</span>
+                          </button>
+                        );
                       })}
-                    </p>
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -1132,7 +1643,7 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
               <input
                 type="text"
                 value={newMessage}
-                onChange={(e) => setNewMessage(e.target.value)}
+                onChange={(e) => handleTypingInput(e.target.value)}
                 placeholder={uploading ? "Envoi…" : "Votre message…"}
                 disabled={uploading || recording}
                 className="flex-1 px-4 py-3 rounded-xl border text-sm outline-none disabled:opacity-50"
@@ -1242,7 +1753,8 @@ export function MessagesTab({ onRewardPoints, id: propId, onOpenProfile }) {
           {conversations.map((c) => {
             let preview = "Nouvelle conversation";
             if (c.lastMsg) {
-              if (c.lastMsg.type === "voice") preview = "🎤 Message vocal";
+              if (c.lastMsg.deleted_at) preview = "🚫 Message supprimé";
+              else if (c.lastMsg.type === "voice") preview = "🎤 Message vocal";
               else if (c.lastMsg.type === "image") preview = "📷 Photo";
               else if (c.lastMsg.type === "video") preview = "🎬 Vidéo";
               else if (c.lastMsg.type === "file") preview = `📎 ${c.lastMsg.file_name || "Fichier"}`;
