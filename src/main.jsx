@@ -24,8 +24,12 @@ ReactDOM.createRoot(document.getElementById("root")).render(
   </React.StrictMode>
 );
 
+// VitePWA gère l'enregistrement du service worker en build.
+// Fallback uniquement si aucun SW n'est déjà contrôlé (dev / ancien déploiement).
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+    if (!navigator.serviceWorker.controller) {
+      navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+    }
   });
 }
