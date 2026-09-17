@@ -49,7 +49,7 @@ const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
           .eq("followed_id", targetId);
         if (error) throw error;
       } else {
-        // ✅ Abonnement - Le trigger SQL gérera la notification automatiquement
+        // ✅ Abonnement - Le trigger SQL crée la notification automatiquement
         const { error } = await supabase.from("follows").upsert(
           { 
             follower_id: myId, 
@@ -62,9 +62,9 @@ const FollowButton = ({ targetId, onRequireAuth, currentUserId }) => {
         if (error) throw error;
       }
     } catch (err) {
-      alert(`❌ Erreur abonnement:\n${err.message}`);
+      alert(` Erreur: ${err.message}`);
       console.error("Erreur follow:", err);
-      setIsFollowing(prev); // Rollback visuel
+      setIsFollowing(prev);
     } finally {
       setLoading(false);
     }
