@@ -1,0 +1,4 @@
+- Table `follows` : colonnes `follower_id`, `followed_id`, `status`, `is_friend` ✅
+- Fonctions SQL : `get_user_friends()`, `toggle_follow()` ✅
+- Trigger : `on_follow_created` pour les notifications ✅
+- Politiques RLS : activées et fonctionnelles ✅
