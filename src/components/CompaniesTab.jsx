@@ -13,9 +13,9 @@ import {
 } from 'lucide-react';
 import { useCommunity, useChannelMessages, useVoiceChannel } from '../hooks/useCommunity';
 import { FollowButton, FriendsTab, FriendRequests } from '../features/friends/index.js';
-import { COLORS } from '../../theme.js';
+import { COLORS } from '../theme.js'; // ✅ CORRECTION ICI : ../theme.js au lieu de ../../theme.js
 
-export default function CommunityTab({ id, onOpenProfile }) {
+export default function CompaniesTab({ id, onOpenProfile }) {
   const { friends, allUsers, groups, createGroup, createChannel, deleteChannel, banMember, updateMemberRole, loadUsers } = useCommunity(id);
   
   const [activeTab, setActiveTab] = useState('groups');
