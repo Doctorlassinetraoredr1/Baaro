@@ -25,6 +25,8 @@ import { GuestBanner } from "../../components/GuestBanner.jsx";
 import { TranslateButton } from "../../components/TranslateButton.jsx";
 import { PollCard, SocialPostEnhancements, SocialSuggestions } from "./SocialEnhancements.jsx";
 import { PollComposer } from "../../components/PollComposer.jsx";
+import { RichTextComposer } from "../../components/RichTextComposer.jsx";
+import { RichTextRenderer } from "../../components/RichTextRenderer.jsx";
 import { NotificationDrawer } from "../../components/NotificationDrawer.jsx"; // 🆕 Import du Drawer
 
 // Taille de page pour le fil. Pagination par CURSEUR (created_at + id)
@@ -615,14 +617,15 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
           <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm shadow-md gold-glow" style={{ background: COLORS.gold, color: COLORS.bg }}>
             {user?.email?.charAt(0)?.toUpperCase() || "V"}
           </div>
-          <textarea
-            value={newText}
-            onChange={(e) => setNewText(e.target.value)}
-            placeholder="Quoi de neuf ?"
-            className="flex-1 bg-transparent resize-none outline-none text-sm leading-relaxed"
-            style={{ color: COLORS.ivory }}
-            rows={3}
-          />
+          <div className="flex-1 min-w-0">
+            <RichTextComposer
+              value={newText}
+              onChange={setNewText}
+              placeholder="Quoi de neuf ?"
+              rows={3}
+              disabled={submitting}
+            />
+          </div>
         </div>
 
         {mediaPreview && (
@@ -745,7 +748,7 @@ export function FeedTab({ userId, onOpenProfile, onRewardPoints }) {
                   </div>
                 ) : (
                   <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: COLORS.ivory }}>
-                    {isTranslated ? translatedMap[post.id] : post.text}
+                    {isTranslated ? translatedMap[post.id] : <RichTextRenderer content={post.text} />}
                   </p>
                 )}
                 
