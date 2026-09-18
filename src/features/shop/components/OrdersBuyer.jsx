@@ -1,148 +1,69 @@
-import { useEffect, useState, useCallback } from "react";
-import { Package, Clock, CheckCircle, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Package, Loader2, Clock, CheckCircle, Truck } from "lucide-react";
 import { COLORS } from "../../../theme.js";
 import { fetchBuyerOrders } from "../../../services/shopApi.js";
 
-// Helper pour styliser les badges de statut
-const getStatusStyle = (status) => {
-  const s = status?.toLowerCase() || "";
-  if (s.includes("completed") || s.includes("livré")) {
-    return { bg: "rgba(45, 191, 166, 0.15)", color: COLORS.teal, icon: CheckCircle };
-  }
-  if (s.includes("cancelled") || s.includes("annulé")) {
-    return { bg: "rgba(239, 68, 68, 0.15)", color: "#ef4444", icon: XCircle };
-  }
-  if (s.includes("pending") || s.includes("attente") || s.includes("processing")) {
-    return { bg: "rgba(217, 174, 82, 0.15)", color: COLORS.gold, icon: Clock };
-  }
-  return { bg: "rgba(255, 255, 255, 0.1)", color: COLORS.muted, icon: AlertCircle };
+const STATUS_CONFIG = {
+  pending: { label: "En attente", icon: Clock, color: "#f59e0b", bg: "rgba(245,158,11,0.15)" },
+  confirmed: { label: "Confirmée", icon: CheckCircle, color: "#3b82f6", bg: "rgba(59,130,246,0.15)" },
+  shipped: { label: "En livraison", icon: Truck, color: "#8b5cf6", bg: "rgba(139,92,246,0.15)" },
+  delivered: { label: "Livrée", icon: CheckCircle, color: "#22c55e", bg: "rgba(34,197,94,0.15)" },
+  cancelled: { label: "Annulée", icon: Package, color: "#ef4444", bg: "rgba(239,68,68,0.15)" },
 };
 
-export default function OrdersBuyer({ userId }) {
+export default function OrdersBuyer({ id }) {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
 
-  const load = useCallback(async () => {
-    if (!userId) return;
+  useEffect(() => { if (id) loadOrders(); }, [id]);
+
+  const loadOrders = async () => {
     setLoading(true);
-    setError("");
     try {
-      const data = await fetchBuyerOrders(userId);
+      const data = await fetchBuyerOrders(id);
       setOrders(data || []);
-    } catch (e) {
-      console.error("Erreur chargement commandes:", e);
-      setError(e.message || "Impossible de charger les commandes.");
-    } finally {
-      setLoading(false);
-    }
-  }, [userId]);
+    } catch (err) { console.error("Erreur commandes:", err); } finally { setLoading(false); }
+  };
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <Loader2 className="animate-spin" size={32} style={{ color: COLORS.gold }} />
-        <p className="text-sm" style={{ color: COLORS.muted }}>Chargement de vos commandes…</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-        <AlertCircle size={32} style={{ color: "#ef4444" }} />
-        <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
-        <button 
-          onClick={load}
-          className="px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95"
-          style={{ borderColor: COLORS.border, color: COLORS.ivory }}
-        >
-          Réessayer
-        </button>
-      </div>
-    );
-  }
-
-  if (!orders.length) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-        <Package size={48} style={{ color: COLORS.muted, opacity: 0.3 }} />
-        <p className="text-sm font-semibold" style={{ color: COLORS.ivory }}>Aucune commande pour le moment</p>
-        <p className="text-xs" style={{ color: COLORS.muted }}>Vos achats apparaîtront ici.</p>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex justify-center py-12"><Loader2 className="animate-spin" style={{ color: COLORS.gold }} /></div>;
 
   return (
-    <div className="grid gap-3">
-      {orders.map((o) => {
-        const statusStyle = getStatusStyle(o.status);
-        const StatusIcon = statusStyle.icon;
-        
-        return (
-          <div 
-            key={o.id} 
-            className="rounded-xl border p-4 transition-all hover:border-amber-400/30" 
-            style={{ background: COLORS.surface, borderColor: COLORS.border }}
-          >
-            {/* En-tête : Boutique et Statut */}
-            <div className="flex justify-between items-start gap-2 mb-2">
-              <div className="flex-1 min-w-0">
-                <h3 className="font-bold text-sm truncate" style={{ color: COLORS.ivory }}>
-                  {o.shops?.name || "Boutique"}
-                </h3>
-                <p className="text-xs mt-0.5" style={{ color: COLORS.muted }}>
-                  {new Date(o.created_at).toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })}
-                  {" · "}
-                  {o.method === "pickup" ? "Retrait en boutique" : "Livraison"}
-                </p>
+    <div className="flex flex-col gap-3">
+      <h3 className="text-sm font-bold mb-2" style={{ color: COLORS.ivory }}>Mes commandes</h3>
+      {orders.length === 0 ? (
+        <div className="text-center py-12" style={{ color: COLORS.muted }}><Package size={48} className="mx-auto mb-3 opacity-30" /><p>Vous n'avez pas encore de commande</p></div>
+      ) : (
+        orders.map((order) => {
+          const status = STATUS_CONFIG[order.status] || STATUS_CONFIG.pending;
+          const StatusIcon = status.icon;
+          return (
+            <div key={order.id} className="rounded-xl border p-4" style={{ background: COLORS.surface2, borderColor: COLORS.border }}>
+              <div className="flex justify-between items-start mb-3">
+                <div>
+                  <p className="text-xs font-bold" style={{ color: COLORS.muted }}>Commande du {new Date(order.created_at).toLocaleDateString("fr-FR")}</p>
+                  <p className="text-sm font-bold mt-1" style={{ color: COLORS.ivory }}>{order.shops?.name || "Boutique"}</p>
+                </div>
+                <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-1 rounded-full" style={{ background: status.bg, color: status.color }}><StatusIcon size={10} /> {status.label}</span>
               </div>
-              <div 
-                className="flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-bold flex-shrink-0"
-                style={{ background: statusStyle.bg, color: statusStyle.color }}
-              >
-                <StatusIcon size={12} />
-                <span className="capitalize">{o.status || "Inconnu"}</span>
+              <div className="space-y-1 mb-3">
+                {order.order_items?.map((item, idx) => (
+                  <div key={idx} className="flex justify-between text-xs" style={{ color: COLORS.muted }}>
+                    <span>{item.quantity}x {item.name}</span>
+                    <span>{(item.unit_price * item.quantity).toLocaleString()} {item.currency}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t pt-3 flex justify-between items-center" style={{ borderColor: COLORS.border }}>
+                <span className="text-xs" style={{ color: COLORS.muted }}>
+                  {order.method === "delivery" ? "🚚 Livraison" : "📍 Retrait"}
+                  {order.pickup_code && <span className="ml-2 font-mono font-bold" style={{ color: COLORS.gold }}>Code: {order.pickup_code}</span>}
+                </span>
+                <span className="text-sm font-black" style={{ color: COLORS.ivory }}>{Number(order.total_amount).toLocaleString()} {order.currency}</span>
               </div>
             </div>
-
-            {/* Liste des articles */}
-            {o.order_items?.length > 0 && (
-              <div className="mt-3 pt-3 border-t" style={{ borderColor: COLORS.border }}>
-                <div className="flex flex-wrap gap-1.5">
-                  {o.order_items.map((i, idx) => (
-                    <span 
-                      key={idx} 
-                      className="text-xs px-2 py-1 rounded-md"
-                      style={{ background: COLORS.surface2, color: COLORS.muted }}
-                    >
-                      {i.name} × {i.quantity}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Pied de carte : Total et Code de retrait */}
-            <div className="mt-3 flex items-center justify-between">
-              <div className="text-sm font-bold" style={{ color: COLORS.gold }}>
-                {Number(o.total_amount || 0).toFixed(2)} {o.currency || "XOF"}
-              </div>
-              
-              {o.pickup_code && (o.status?.toLowerCase().includes("completed") || o.status?.toLowerCase().includes("livré")) && (
-                <div className="text-xs px-3 py-1.5 rounded-lg font-bold flex items-center gap-1" style={{ background: COLORS.gold, color: COLORS.bg }}>
-                  <Package size={12} />
-                  Code : {o.pickup_code}
-                </div>
-              )}
-            </div>
-          </div>
-        );
-      })}
+          );
+        })
+      )}
     </div>
   );
 }
