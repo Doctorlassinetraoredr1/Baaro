@@ -1,10 +1,39 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
-  Hash, Mic, Send, Plus, Users, Search, Lock,
-  Crown, Pin, Settings, Volume2, Compass, Sparkles, Globe,
-  Flame, Smile, FileText, X, ArrowLeft, Home, MessageCircle,
-  Heart, Bell, Zap, Coffee, Gamepad2, Briefcase, Code2,
-  BookOpen, Music, MessageSquare, Phone
+  Hash,
+  Mic,
+  Send,
+  Plus,
+  Users,
+  Search,
+  Lock,
+  Crown,
+  Shield,
+  UserMinus,
+  Pin,
+  Settings,
+  Volume2,
+  Compass,
+  Sparkles,
+  Globe,
+  Flame,
+  Smile,
+  FileText,
+  X,
+  ArrowLeft,
+  Home,
+  MessageCircle,
+  Heart,
+  Bell,
+  Zap,
+  Coffee,
+  Gamepad2,
+  Briefcase,
+  Code2,
+  BookOpen,
+  Music,
+  MessageSquare,
+  Phone
 } from 'lucide-react';
 
 import {
@@ -76,34 +105,20 @@ const CATEGORIES = [
 ];
 
 const getCategoryConfig = (catId) => {
-  return CATEGORIES.find(c => c.id === catId) || CATEGORIES[0];
+  return CATEGORIES.find((c) => c.id === catId) || CATEGORIES[0];
 };
 
 const getChannelIcon = (channel) => {
   const name = (channel?.name || '').toLowerCase();
 
   if (channel?.type === 'voice') return Volume2;
-
-  if (name.includes('general') || name.includes('général')) {
-    return MessageCircle;
-  }
-
-  if (name.includes('annonce') || name.includes('news')) {
-    return Bell;
-  }
-
-  if (name.includes('business') || name.includes('startup')) {
-    return Briefcase;
-  }
-
-  if (name.includes('tech') || name.includes('code')) {
-    return Code2;
-  }
-
+  if (name.includes('general') || name.includes('général')) return MessageCircle;
+  if (name.includes('annonce') || name.includes('news')) return Bell;
+  if (name.includes('business') || name.includes('startup')) return Briefcase;
+  if (name.includes('tech') || name.includes('code')) return Code2;
   if (name.includes('etude') || name.includes('étude') || name.includes('study')) {
     return BookOpen;
   }
-
   if (
     name.includes('fun') ||
     name.includes('game') ||
@@ -111,7 +126,6 @@ const getChannelIcon = (channel) => {
   ) {
     return Gamepad2;
   }
-
   if (
     name.includes('music') ||
     name.includes('musique') ||
@@ -119,13 +133,7 @@ const getChannelIcon = (channel) => {
   ) {
     return Music;
   }
-
-  if (
-    name.includes('café') ||
-    name.includes('cafe')
-  ) {
-    return Coffee;
-  }
+  if (name.includes('café') || name.includes('cafe')) return Coffee;
 
   return MessageSquare;
 };
@@ -137,7 +145,7 @@ const getChannelColor = (channel, isActive) => {
 
   const name = (channel?.name || '').toLowerCase();
 
-  if (name.includes('general')) {
+  if (name.includes('general') || name.includes('général')) {
     return 'rgba(251,191,36,0.15)';
   }
 
@@ -156,21 +164,50 @@ const getChannelColor = (channel, isActive) => {
   return COLORS.surface2;
 };
 
-const getAvatar = (user, fallback = 'Membre') => {
-  if (user?.avatar_url) return user.avatar_url;
+const getRoleLabel = (role) => {
+  switch (role) {
+    case 'owner':
+      return 'Propriétaire';
+    case 'admin':
+      return 'Admin';
+    case 'moderator':
+      return 'Modérateur';
+    default:
+      return 'Membre';
+  }
+};
 
-  const seed =
-    user?.display_name ||
-    user?.handle ||
-    fallback;
+const getRoleIcon = (role) => {
+  switch (role) {
+    case 'owner':
+      return Crown;
+    case 'admin':
+      return Shield;
+    case 'moderator':
+      return Shield;
+    default:
+      return Users;
+  }
+};
 
-  return `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(seed)}`;
+const getRoleColor = (role) => {
+  switch (role) {
+    case 'owner':
+      return COLORS.gold;
+    case 'admin':
+      return '#60a5fa';
+    case 'moderator':
+      return COLORS.teal;
+    default:
+      return COLORS.muted;
+  }
 };
 
 export default function CommunityTab({ onOpenProfile }) {
   const { id } = useCurrentUser();
 
   const {
+    friends,
     allUsers,
     groups,
     createGroup,
@@ -187,6 +224,7 @@ export default function CommunityTab({ onOpenProfile }) {
 
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [showMembers, setShowMembers] = useState(true);
 
   const [newGroup, setNewGroup] = useState({
     name: '',
@@ -204,60 +242,64 @@ export default function CommunityTab({ onOpenProfile }) {
 
   const [search, setSearch] = useState('');
   const [groupSearch, setGroupSearch] = useState('');
-
   const [selectedCategory, setSelectedCategory] = useState('all');
 
   const [selectedCountry, setSelectedCountry] = useState('all');
   const [selectedLanguage, setSelectedLanguage] = useState('all');
-
-  const [showMembers, setShowMembers] = useState(true);
 
   const [mobileView, setMobileView] = useState('groups');
 
   const [msgText, setMsgText] = useState('');
   const [sendingMessage, setSendingMessage] = useState(false);
 
-  const [actionLoading, setActionLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [creatingChannel, setCreatingChannel] = useState(false);
+
+  const [actionError, setActionError] = useState('');
+  const [messageError, setMessageError] = useState('');
 
   const messagesEndRef = useRef(null);
 
   const {
-    messages = [],
+    messages,
     sendMessage
-  } = useChannelMessages(selectedChannel?.id) || {};
+  } = useChannelMessages(selectedChannel?.id) || {
+    messages: [],
+    sendMessage: async () => {}
+  };
 
   const {
-    participants: voiceParticipants = [],
+    participants: voiceParticipants,
     isJoined,
     joinVoice,
     leaveVoice,
     loading: voiceLoading
-  } = useVoiceChannel(selectedChannel?.id) || {};
+  } = useVoiceChannel(selectedChannel?.id);
 
   /*
-   * ---------------------------------------------------------
-   * ROLE
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * ROLE / PERMISSIONS
+   * ------------------------------------------------------------
    */
 
   const myRole = useMemo(() => {
     if (!selectedGroup || !id) return 'member';
 
-    const membership = selectedGroup.members?.find(
-      member => member.user_id === id
+    return (
+      selectedGroup.members?.find(
+        (member) => member.user_id === id
+      )?.role || 'member'
     );
-
-    return membership?.role || 'member';
   }, [selectedGroup, id]);
 
-  const isAdmin = ['owner', 'admin'].includes(myRole);
   const isOwner = myRole === 'owner';
 
+  const isAdmin = ['owner', 'admin'].includes(myRole);
+
   /*
-   * ---------------------------------------------------------
-   * AUTO SELECT
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * GROUP AUTO-SELECTION
+   * ------------------------------------------------------------
    */
 
   useEffect(() => {
@@ -266,19 +308,53 @@ export default function CommunityTab({ onOpenProfile }) {
 
       setSelectedGroup(firstGroup);
 
-      const firstTextChannel =
-        firstGroup.channels?.find(ch => ch.type !== 'voice') ||
+      const firstChannel =
+        firstGroup.channels?.find((channel) => channel.type !== 'voice') ||
         firstGroup.channels?.[0] ||
         null;
 
-      setSelectedChannel(firstTextChannel);
+      setSelectedChannel(firstChannel);
     }
   }, [groups, selectedGroup]);
 
   /*
-   * ---------------------------------------------------------
-   * MESSAGE SCROLL
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * KEEP SELECTED GROUP IN SYNC WITH REFRESHED GROUP DATA
+   * ------------------------------------------------------------
+   */
+
+  useEffect(() => {
+    if (!selectedGroup?.id || !groups?.length) return;
+
+    const refreshedGroup = groups.find(
+      (group) => group.id === selectedGroup.id
+    );
+
+    if (refreshedGroup) {
+      setSelectedGroup(refreshedGroup);
+
+      if (
+        selectedChannel?.id &&
+        refreshedGroup.channels?.length &&
+        !refreshedGroup.channels.some(
+          (channel) => channel.id === selectedChannel.id
+        )
+      ) {
+        setSelectedChannel(
+          refreshedGroup.channels.find(
+            (channel) => channel.type !== 'voice'
+          ) ||
+            refreshedGroup.channels[0] ||
+            null
+        );
+      }
+    }
+  }, [groups]);
+
+  /*
+   * ------------------------------------------------------------
+   * SCROLL MESSAGES
+   * ------------------------------------------------------------
    */
 
   useEffect(() => {
@@ -288,9 +364,9 @@ export default function CommunityTab({ onOpenProfile }) {
   }, [messages]);
 
   /*
-   * ---------------------------------------------------------
-   * SEARCH DEBOUNCE
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * DEBOUNCED SEARCH
+   * ------------------------------------------------------------
    */
 
   useEffect(() => {
@@ -306,19 +382,22 @@ export default function CommunityTab({ onOpenProfile }) {
   }, [search, loadUsers]);
 
   /*
-   * ---------------------------------------------------------
-   * FILTERS
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * GROUP FILTERS
+   * ------------------------------------------------------------
    */
 
   const filteredGroups = useMemo(() => {
     const query = groupSearch.trim().toLowerCase();
 
-    return (groups || []).filter(group => {
+    return (groups || []).filter((group) => {
+      const name = (group.name || '').toLowerCase();
+      const description = (group.description || '').toLowerCase();
+
       const matchesSearch =
         !query ||
-        group.name?.toLowerCase().includes(query) ||
-        group.description?.toLowerCase().includes(query);
+        name.includes(query) ||
+        description.includes(query);
 
       const matchesCategory =
         selectedCategory === 'all' ||
@@ -326,34 +405,41 @@ export default function CommunityTab({ onOpenProfile }) {
 
       return matchesSearch && matchesCategory;
     });
-  }, [
-    groups,
-    groupSearch,
-    selectedCategory
-  ]);
+  }, [groups, groupSearch, selectedCategory]);
+
+  /*
+   * ------------------------------------------------------------
+   * DISCOVERY SEARCH
+   * ------------------------------------------------------------
+   */
 
   const searchedGroups = useMemo(() => {
     const query = search.trim().toLowerCase();
 
     if (!query) return [];
 
-    return (groups || []).filter(group =>
-      group.name?.toLowerCase().includes(query) ||
-      group.description?.toLowerCase().includes(query)
-    );
+    return (groups || []).filter((group) => {
+      const name = (group.name || '').toLowerCase();
+      const description = (group.description || '').toLowerCase();
+
+      return (
+        name.includes(query) ||
+        description.includes(query)
+      );
+    });
   }, [groups, search]);
 
   const filteredUsersForDiscover = useMemo(() => {
-    return (allUsers || []).filter(user => {
-      const matchCountry =
+    return (allUsers || []).filter((user) => {
+      const matchesCountry =
         selectedCountry === 'all' ||
         user.country === selectedCountry;
 
-      const matchLanguage =
+      const matchesLanguage =
         selectedLanguage === 'all' ||
         user.language === selectedLanguage;
 
-      return matchCountry && matchLanguage;
+      return matchesCountry && matchesLanguage;
     });
   }, [
     allUsers,
@@ -366,19 +452,35 @@ export default function CommunityTab({ onOpenProfile }) {
 
     if (!query) return [];
 
-    return filteredUsersForDiscover.filter(user =>
-      user.display_name?.toLowerCase().includes(query) ||
-      user.handle?.toLowerCase().includes(query)
-    );
+    return filteredUsersForDiscover.filter((user) => {
+      const displayName = (
+        user.display_name || ''
+      ).toLowerCase();
+
+      const handle = (
+        user.handle || ''
+      ).toLowerCase();
+
+      return (
+        displayName.includes(query) ||
+        handle.includes(query)
+      );
+    });
   }, [
     filteredUsersForDiscover,
     search
   ]);
 
+  /*
+   * ------------------------------------------------------------
+   * CHANNELS
+   * ------------------------------------------------------------
+   */
+
   const textChannels = useMemo(
     () =>
       selectedGroup?.channels?.filter(
-        channel => channel.type !== 'voice'
+        (channel) => channel.type !== 'voice'
       ) || [],
     [selectedGroup]
   );
@@ -386,22 +488,26 @@ export default function CommunityTab({ onOpenProfile }) {
   const voiceChannels = useMemo(
     () =>
       selectedGroup?.channels?.filter(
-        channel => channel.type === 'voice'
+        (channel) => channel.type === 'voice'
       ) || [],
     [selectedGroup]
   );
 
   /*
-   * ---------------------------------------------------------
-   * GROUP / CHANNEL SELECTION
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * GROUP SELECTION
+   * ------------------------------------------------------------
    */
 
-  const handleSelectGroup = (group) => {
+  const handleSelectGroup = useCallback((group) => {
+    if (!group) return;
+
     setSelectedGroup(group);
 
     const firstChannel =
-      group.channels?.find(ch => ch.type !== 'voice') ||
+      group.channels?.find(
+        (channel) => channel.type !== 'voice'
+      ) ||
       group.channels?.[0] ||
       null;
 
@@ -409,39 +515,50 @@ export default function CommunityTab({ onOpenProfile }) {
 
     setActiveTab('groups');
     setMobileView('channels');
-    setErrorMessage('');
-  };
-
-  const handleSelectChannel = (channel) => {
-    setSelectedChannel(channel);
-    setMobileView('chat');
-    setErrorMessage('');
-  };
+    setActionError('');
+  }, []);
 
   /*
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * CHANNEL SELECTION
+   * ------------------------------------------------------------
+   */
+
+  const handleSelectChannel = useCallback((channel) => {
+    if (!channel) return;
+
+    setSelectedChannel(channel);
+    setMobileView('chat');
+    setMessageError('');
+    setActionError('');
+  }, []);
+
+  /*
+   * ------------------------------------------------------------
    * CREATE GROUP
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
    */
 
   const handleCreateGroup = async () => {
     const name = newGroup.name.trim();
 
-    if (!name) return;
+    if (!name || creatingGroup) return;
 
-    setActionLoading(true);
-    setErrorMessage('');
+    setCreatingGroup(true);
+    setActionError('');
 
     try {
       const payload = {
         name,
-        description: newGroup.description?.trim() || null,
+        description:
+          newGroup.description?.trim() || null,
         is_public: !!newGroup.is_public,
-        category: newGroup.category || 'community',
+        category:
+          newGroup.category || 'community',
         type: 'community'
       };
 
-      const createdGroup = await createGroup(payload);
+      const group = await createGroup(payload);
 
       setShowCreateGroup(false);
 
@@ -453,14 +570,14 @@ export default function CommunityTab({ onOpenProfile }) {
         type: 'community'
       });
 
-      if (createdGroup) {
-        setSelectedGroup(createdGroup);
+      if (group) {
+        setSelectedGroup(group);
 
         const firstChannel =
-          createdGroup.channels?.find(
-            channel => channel.type !== 'voice'
+          group.channels?.find(
+            (channel) => channel.type !== 'voice'
           ) ||
-          createdGroup.channels?.[0] ||
+          group.channels?.[0] ||
           null;
 
         setSelectedChannel(firstChannel);
@@ -468,41 +585,45 @@ export default function CommunityTab({ onOpenProfile }) {
         setMobileView('channels');
       }
     } catch (error) {
-      console.error('handleCreateGroup:', error);
+      console.error('create group:', error);
 
-      setErrorMessage(
+      setActionError(
         error?.message ||
-        'Impossible de créer le groupe.'
+          'Impossible de créer le groupe.'
       );
     } finally {
-      setActionLoading(false);
+      setCreatingGroup(false);
     }
   };
 
   /*
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
    * CREATE CHANNEL
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
    */
 
   const handleCreateChannel = async () => {
-    if (!selectedGroup) return;
+    if (
+      !selectedGroup ||
+      !newChannel.name.trim() ||
+      creatingChannel
+    ) {
+      return;
+    }
 
-    const name = newChannel.name.trim();
-
-    if (!name) return;
-
-    setActionLoading(true);
-    setErrorMessage('');
+    setCreatingChannel(true);
+    setActionError('');
 
     try {
       const channel = await createChannel(
         selectedGroup.id,
         {
-          name,
+          name: newChannel.name.trim(),
           type: newChannel.type,
-          description: newChannel.topic?.trim() || null,
-          topic: newChannel.topic?.trim() || null
+          description:
+            newChannel.topic?.trim() || null,
+          topic:
+            newChannel.topic?.trim() || null
         }
       );
 
@@ -515,65 +636,106 @@ export default function CommunityTab({ onOpenProfile }) {
       });
 
       if (channel) {
-        /*
-         * Met à jour immédiatement le groupe sélectionné
-         * sans attendre un nouveau clic.
-         */
-        setSelectedGroup(prev => {
-          if (!prev) return prev;
-
-          const exists = prev.channels?.some(
-            ch => ch.id === channel.id
-          );
-
-          return {
-            ...prev,
-            channels: exists
-              ? prev.channels
-              : [...(prev.channels || []), channel]
-          };
-        });
-
         setSelectedChannel(channel);
         setMobileView('chat');
       }
     } catch (error) {
-      console.error('handleCreateChannel:', error);
+      console.error('create channel:', error);
 
-      setErrorMessage(
+      setActionError(
         error?.message ||
-        'Impossible de créer le canal.'
+          'Impossible de créer le canal.'
       );
     } finally {
-      setActionLoading(false);
+      setCreatingChannel(false);
     }
   };
 
   /*
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * REMOVE MEMBER
+   * ------------------------------------------------------------
+   *
+   * Note:
+   * banMember currently removes the membership.
+   * A real permanent ban requires a dedicated bans table.
+   */
+
+  const handleRemoveMember = async (member) => {
+    if (!selectedGroup || !member || !isAdmin) return;
+
+    if (member.user_id === id) {
+      setActionError(
+        'Tu ne peux pas supprimer ton propre compte du groupe depuis cette action.'
+      );
+      return;
+    }
+
+    if (member.role === 'owner') {
+      setActionError(
+        'Le propriétaire du groupe ne peut pas être supprimé.'
+      );
+      return;
+    }
+
+    const displayName =
+      member.profiles?.display_name ||
+      member.profiles?.handle ||
+      'ce membre';
+
+    const confirmed = window.confirm(
+      `Retirer ${displayName} du groupe ?`
+    );
+
+    if (!confirmed) return;
+
+    setActionError('');
+
+    try {
+      await banMember(
+        selectedGroup.id,
+        member.user_id
+      );
+    } catch (error) {
+      console.error('remove member:', error);
+
+      setActionError(
+        error?.message ||
+          'Impossible de retirer ce membre.'
+      );
+    }
+  };
+
+  /*
+   * ------------------------------------------------------------
    * SEND MESSAGE
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
    */
 
   const handleSendMessage = async () => {
     const text = msgText.trim();
 
-    if (!text) return;
-    if (!selectedChannel) return;
-    if (sendingMessage) return;
+    if (
+      !text ||
+      !selectedChannel ||
+      selectedChannel.type === 'voice' ||
+      sendingMessage
+    ) {
+      return;
+    }
 
     setSendingMessage(true);
-    setErrorMessage('');
+    setMessageError('');
 
     try {
       await sendMessage(text);
       setMsgText('');
     } catch (error) {
-      console.error('handleSendMessage:', error);
+      console.error('send message:', error);
 
-      setErrorMessage(
+      setMessageError(
         error?.message ||
-        'Impossible d’envoyer le message.'
+          'Impossible d’envoyer le message.'
       );
     } finally {
       setSendingMessage(false);
@@ -581,244 +743,25 @@ export default function CommunityTab({ onOpenProfile }) {
   };
 
   /*
-   * ---------------------------------------------------------
-   * REMOVE MEMBER
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
+   * KEYBOARD MESSAGE
+   * ------------------------------------------------------------
    */
 
-  const handleRemoveMember = async (member) => {
-    if (!selectedGroup || !member?.user_id) return;
-
-    /*
-     * Protection UI.
-     * La vraie sécurité reste dans RLS.
-     */
-    if (member.user_id === id) {
-      setErrorMessage(
-        'Tu ne peux pas supprimer ton propre compte du groupe depuis cette action.'
-      );
-      return;
-    }
-
-    if (member.role === 'owner') {
-      setErrorMessage(
-        'Le propriétaire du groupe ne peut pas être supprimé.'
-      );
-      return;
-    }
-
-    if (!isAdmin) {
-      setErrorMessage(
-        'Tu n’as pas les permissions nécessaires.'
-      );
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `Retirer ${member.profiles?.display_name || 'ce membre'} du groupe ?`
-    );
-
-    if (!confirmed) return;
-
-    setActionLoading(true);
-    setErrorMessage('');
-
-    try {
-      await banMember(
-        selectedGroup.id,
-        member.user_id
-      );
-
-      setSelectedGroup(prev => {
-        if (!prev) return prev;
-
-        return {
-          ...prev,
-          members: (prev.members || []).filter(
-            current => current.user_id !== member.user_id
-          )
-        };
-      });
-    } catch (error) {
-      console.error('handleRemoveMember:', error);
-
-      setErrorMessage(
-        error?.message ||
-        'Impossible de retirer ce membre.'
-      );
-    } finally {
-      setActionLoading(false);
+  const handleMessageKeyDown = (event) => {
+    if (
+      event.key === 'Enter' &&
+      !event.shiftKey
+    ) {
+      event.preventDefault();
+      handleSendMessage();
     }
   };
 
   /*
-   * ---------------------------------------------------------
-   * MEMBERS PANEL
-   * ---------------------------------------------------------
-   */
-
-  const MembersPanel = () => {
-    if (!showMembers || !selectedGroup) return null;
-
-    const members = selectedGroup.members || [];
-
-    return (
-      <aside
-        className="hidden lg:flex w-[280px] shrink-0 flex-col border-l"
-        style={{
-          background: COLORS.surface,
-          borderColor: COLORS.border
-        }}
-      >
-        <div
-          className="h-[64px] px-4 flex items-center justify-between border-b"
-          style={{ borderColor: COLORS.border }}
-        >
-          <div>
-            <p
-              className="font-black text-[13px]"
-              style={{ color: COLORS.ivory }}
-            >
-              Membres
-            </p>
-
-            <p
-              className="text-[11px]"
-              style={{ color: COLORS.muted }}
-            >
-              {members.length} membre
-              {members.length !== 1 ? 's' : ''}
-            </p>
-          </div>
-
-          <Users
-            size={17}
-            style={{ color: COLORS.muted }}
-          />
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-3 space-y-1">
-          {members.length === 0 ? (
-            <div
-              className="text-center py-10 text-xs"
-              style={{ color: COLORS.muted }}
-            >
-              Aucun membre disponible.
-            </div>
-          ) : (
-            members.map(member => {
-              const profile = member.profiles || {};
-              const isSelf = member.user_id === id;
-              const memberIsOwner = member.role === 'owner';
-
-              return (
-                <div
-                  key={`${member.group_id}-${member.user_id}`}
-                  className="flex items-center gap-3 p-2.5 rounded-[14px] hover:bg-white/[0.04]"
-                >
-                  <button
-                    onClick={() =>
-                      onOpenProfile?.(member.user_id)
-                    }
-                    className="shrink-0"
-                  >
-                    <img
-                      src={getAvatar(profile)}
-                      className="w-9 h-9 rounded-full"
-                      alt=""
-                    />
-                  </button>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <p
-                        className="text-[12px] font-black truncate"
-                        style={{ color: COLORS.ivory }}
-                      >
-                        {profile.display_name || 'Membre'}
-                      </p>
-
-                      {isSelf && (
-                        <span
-                          className="text-[8px] px-1.5 py-0.5 rounded-full font-black"
-                          style={{
-                            background: 'rgba(20,184,166,0.15)',
-                            color: COLORS.teal
-                          }}
-                        >
-                          TOI
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      {memberIsOwner ? (
-                        <>
-                          <Crown
-                            size={10}
-                            style={{ color: COLORS.gold }}
-                          />
-                          <span
-                            className="text-[10px] font-bold"
-                            style={{ color: COLORS.gold }}
-                          >
-                            Propriétaire
-                          </span>
-                        </>
-                      ) : member.role === 'admin' ? (
-                        <>
-                          <Settings
-                            size={10}
-                            style={{ color: COLORS.teal }}
-                          />
-                          <span
-                            className="text-[10px] font-bold"
-                            style={{ color: COLORS.teal }}
-                          >
-                            Admin
-                          </span>
-                        </>
-                      ) : (
-                        <span
-                          className="text-[10px]"
-                          style={{ color: COLORS.muted }}
-                        >
-                          Membre
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  {isAdmin &&
-                    !isSelf &&
-                    !memberIsOwner && (
-                      <button
-                        disabled={actionLoading}
-                        onClick={() =>
-                          handleRemoveMember(member)
-                        }
-                        className="w-7 h-7 rounded-lg flex items-center justify-center hover:bg-red-500/15 disabled:opacity-30"
-                        title="Retirer du groupe"
-                      >
-                        <X
-                          size={14}
-                          className="text-red-400"
-                        />
-                      </button>
-                    )}
-                </div>
-              );
-            })
-          )}
-        </div>
-      </aside>
-    );
-  };
-
-  /*
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
    * LOADING
-   * ---------------------------------------------------------
+   * ------------------------------------------------------------
    */
 
   if (loading) {
@@ -831,8 +774,7 @@ export default function CommunityTab({ onOpenProfile }) {
           <div
             className="w-14 h-14 rounded-[18px] animate-pulse"
             style={{
-              background:
-                `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)`
+              background: `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)`
             }}
           />
 
@@ -846,12 +788,6 @@ export default function CommunityTab({ onOpenProfile }) {
       </div>
     );
   }
-
-  /*
-   * ---------------------------------------------------------
-   * UI
-   * ---------------------------------------------------------
-   */
 
   return (
     <div
@@ -868,8 +804,7 @@ export default function CommunityTab({ onOpenProfile }) {
       <div
         className="hidden md:flex w-[80px] flex-col items-center py-4 gap-3 border-r shrink-0 overflow-y-auto scrollbar-none"
         style={{
-          background:
-            `linear-gradient(180deg, ${COLORS.surface} 0%, #0f0f0f 100%)`,
+          background: `linear-gradient(180deg, ${COLORS.surface} 0%, #0f0f0f 100%)`,
           borderColor: COLORS.border
         }}
       >
@@ -902,11 +837,12 @@ export default function CommunityTab({ onOpenProfile }) {
           style={{ background: COLORS.border }}
         />
 
-        {groups.slice(0, 15).map(group => {
+        {groups.slice(0, 15).map((group) => {
           const selected =
             selectedGroup?.id === group.id &&
-            !['discover', 'friends', 'contacts']
-              .includes(activeTab);
+            activeTab !== 'discover' &&
+            activeTab !== 'friends' &&
+            activeTab !== 'contacts';
 
           return (
             <div
@@ -916,7 +852,9 @@ export default function CommunityTab({ onOpenProfile }) {
               {selected && (
                 <div
                   className="absolute -left-4 top-1/2 -translate-y-1/2 w-[4px] h-8 rounded-r-full"
-                  style={{ background: COLORS.gold }}
+                  style={{
+                    background: COLORS.gold
+                  }}
                 />
               )}
 
@@ -973,7 +911,9 @@ export default function CommunityTab({ onOpenProfile }) {
         })}
 
         <button
-          onClick={() => setShowCreateGroup(true)}
+          onClick={() =>
+            setShowCreateGroup(true)
+          }
           className="w-[52px] h-[52px] rounded-[18px] flex items-center justify-center border-2 border-dashed mt-2 hover:rounded-[14px] hover:border-solid transition-all group/btn"
           style={{
             borderColor: COLORS.border,
@@ -988,7 +928,7 @@ export default function CommunityTab({ onOpenProfile }) {
       </div>
 
       {/* =====================================================
-          SIDEBAR
+          LEFT SIDEBAR
       ====================================================== */}
 
       <div
@@ -1002,12 +942,13 @@ export default function CommunityTab({ onOpenProfile }) {
           borderColor: COLORS.border
         }}
       >
+        {/* HEADER */}
+
         <div
           className="h-[64px] px-4 flex items-center justify-between border-b shrink-0"
           style={{
             borderColor: COLORS.border,
-            background:
-              `linear-gradient(90deg, ${COLORS.surface} 0%, ${COLORS.surface2} 100%)`
+            background: `linear-gradient(90deg, ${COLORS.surface} 0%, ${COLORS.surface2} 100%)`
           }}
         >
           <div className="flex items-center gap-3 min-w-0">
@@ -1017,7 +958,9 @@ export default function CommunityTab({ onOpenProfile }) {
                   setMobileView('groups')
                 }
                 className="md:hidden p-2 -ml-2 rounded-xl hover:bg-white/10"
-                style={{ color: COLORS.ivory }}
+                style={{
+                  color: COLORS.ivory
+                }}
               >
                 <ArrowLeft size={20} />
               </button>
@@ -1038,7 +981,7 @@ export default function CommunityTab({ onOpenProfile }) {
                 selectedGroup.avatar_url ? (
                   <img
                     src={selectedGroup.avatar_url}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full rounded-[12px] object-cover"
                     alt=""
                   />
                 ) : (
@@ -1057,11 +1000,11 @@ export default function CommunityTab({ onOpenProfile }) {
                 {activeTab === 'discover'
                   ? 'Découvrir'
                   : activeTab === 'friends'
-                    ? 'Amis'
-                    : activeTab === 'contacts'
-                      ? 'Contacts'
-                      : selectedGroup?.name ||
-                        'Communautés'}
+                  ? 'Amis'
+                  : activeTab === 'contacts'
+                  ? 'Contacts'
+                  : selectedGroup?.name ||
+                    'Communautés'}
               </h2>
 
               <p
@@ -1071,8 +1014,8 @@ export default function CommunityTab({ onOpenProfile }) {
                 {selectedGroup ? (
                   <>
                     <Users size={10} />
-                    {selectedGroup.members?.length || 0}
-                    {' '}membres
+                    {selectedGroup.members?.length || 0}{' '}
+                    membres
                   </>
                 ) : (
                   `${groups.length} groupes`
@@ -1095,9 +1038,9 @@ export default function CommunityTab({ onOpenProfile }) {
           </button>
         </div>
 
-        {/* ===================================================
-            TABS
-        ==================================================== */}
+        {/* =================================================
+            DESKTOP TABS
+        ================================================== */}
 
         <div
           className="hidden md:flex gap-1 p-2 border-b shrink-0"
@@ -1119,7 +1062,7 @@ export default function CommunityTab({ onOpenProfile }) {
               label: 'Contacts',
               icon: Phone
             }
-          ].map(tab => {
+          ].map((tab) => {
             const Icon = tab.icon;
 
             const active =
@@ -1152,10 +1095,12 @@ export default function CommunityTab({ onOpenProfile }) {
           })}
         </div>
 
+        {/* =================================================
+            SIDEBAR CONTENT
+        ================================================== */}
+
         <div className="flex-1 overflow-y-auto">
-          {/* =================================================
-              GROUPS / CHANNELS
-          ================================================== */}
+          {/* GROUPS / CHANNELS */}
 
           {(mobileView === 'groups' ||
             mobileView === 'channels' ||
@@ -1177,13 +1122,17 @@ export default function CommunityTab({ onOpenProfile }) {
                     <Search
                       size={16}
                       className="absolute left-3.5 top-1/2 -translate-y-1/2"
-                      style={{ color: COLORS.muted }}
+                      style={{
+                        color: COLORS.muted
+                      }}
                     />
 
                     <input
                       value={groupSearch}
-                      onChange={e =>
-                        setGroupSearch(e.target.value)
+                      onChange={(event) =>
+                        setGroupSearch(
+                          event.target.value
+                        )
                       }
                       placeholder="Filtrer les groupes..."
                       className="w-full pl-10 pr-3 py-3 rounded-[14px] text-[14px] font-medium outline-none border focus:border-amber-400/50"
@@ -1196,9 +1145,10 @@ export default function CommunityTab({ onOpenProfile }) {
                   </div>
 
                   <div className="flex gap-1.5 overflow-x-auto pb-2 scrollbar-none">
-                    {CATEGORIES.map(category => {
+                    {CATEGORIES.map((category) => {
                       const active =
-                        selectedCategory === category.id;
+                        selectedCategory ===
+                        category.id;
 
                       const Icon = category.icon;
 
@@ -1213,7 +1163,7 @@ export default function CommunityTab({ onOpenProfile }) {
                           className={`flex items-center gap-1.5 px-3.5 py-2.5 rounded-full text-[11px] font-black whitespace-nowrap transition-all border ${
                             active
                               ? 'scale-105 shadow-lg'
-                              : ''
+                              : 'hover:scale-102'
                           }`}
                           style={{
                             background: active
@@ -1239,9 +1189,10 @@ export default function CommunityTab({ onOpenProfile }) {
                   </div>
 
                   <div className="space-y-1.5">
-                    {filteredGroups.map(group => {
+                    {filteredGroups.map((group) => {
                       const selected =
-                        selectedGroup?.id === group.id;
+                        selectedGroup?.id ===
+                        group.id;
 
                       const category =
                         getCategoryConfig(
@@ -1258,7 +1209,9 @@ export default function CommunityTab({ onOpenProfile }) {
                             handleSelectGroup(group)
                           }
                           className={`w-full flex items-center gap-3 p-3 rounded-[16px] text-left border-2 transition-all hover:scale-[1.01] group ${
-                            selected ? 'shadow-lg' : ''
+                            selected
+                              ? 'shadow-lg'
+                              : ''
                           }`}
                           style={{
                             background: selected
@@ -1281,12 +1234,16 @@ export default function CommunityTab({ onOpenProfile }) {
                           >
                             {group.avatar_url ? (
                               <img
-                                src={group.avatar_url}
+                                src={
+                                  group.avatar_url
+                                }
                                 className="w-full h-full object-cover"
                                 alt=""
                               />
                             ) : (
-                              <CategoryIcon size={20} />
+                              <CategoryIcon
+                                size={20}
+                              />
                             )}
 
                             {group.is_boosted && (
@@ -1330,7 +1287,9 @@ export default function CommunityTab({ onOpenProfile }) {
                                     category.color
                                 }}
                               >
-                                <CategoryIcon size={10} />
+                                <CategoryIcon
+                                  size={10}
+                                />
                                 {category.label}
                               </span>
 
@@ -1340,8 +1299,8 @@ export default function CommunityTab({ onOpenProfile }) {
                                   color: COLORS.muted
                                 }}
                               >
-                                {group.members?.length ||
-                                  0}{' '}
+                                {group.members
+                                  ?.length || 0}{' '}
                                 membres
                               </span>
                             </div>
@@ -1359,6 +1318,24 @@ export default function CommunityTab({ onOpenProfile }) {
                         </button>
                       );
                     })}
+
+                    {filteredGroups.length === 0 && (
+                      <div className="text-center py-8">
+                        <Users
+                          size={26}
+                          className="mx-auto mb-2 opacity-30"
+                        />
+
+                        <p
+                          className="text-xs font-bold"
+                          style={{
+                            color: COLORS.muted
+                          }}
+                        >
+                          Aucun groupe trouvé
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -1373,7 +1350,7 @@ export default function CommunityTab({ onOpenProfile }) {
                 >
                   {selectedGroup && (
                     <>
-                      {/* TEXT */}
+                      {/* TEXT CHANNELS */}
 
                       <div>
                         <div className="flex items-center justify-between px-1 mb-2">
@@ -1383,7 +1360,9 @@ export default function CommunityTab({ onOpenProfile }) {
                               color: COLORS.muted
                             }}
                           >
-                            <MessageSquare size={12} />
+                            <MessageSquare
+                              size={12}
+                            />
                             Canaux Texte —{' '}
                             {textChannels.length}
                           </p>
@@ -1391,7 +1370,9 @@ export default function CommunityTab({ onOpenProfile }) {
                           {isAdmin && (
                             <button
                               onClick={() =>
-                                setShowCreateChannel(true)
+                                setShowCreateChannel(
+                                  true
+                                )
                               }
                               className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
                               style={{
@@ -1405,137 +1386,150 @@ export default function CommunityTab({ onOpenProfile }) {
                         </div>
 
                         <div className="space-y-1">
-                          {textChannels.map(channel => {
-                            const active =
-                              selectedChannel?.id ===
-                              channel.id;
+                          {textChannels.map(
+                            (channel) => {
+                              const active =
+                                selectedChannel?.id ===
+                                channel.id;
 
-                            const Icon =
-                              getChannelIcon(channel);
+                              const Icon =
+                                getChannelIcon(
+                                  channel
+                                );
 
-                            return (
-                              <button
-                                key={channel.id}
-                                onClick={() =>
-                                  handleSelectChannel(
-                                    channel
-                                  )
-                                }
-                                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-left group transition-all hover:scale-[1.01] ${
-                                  active
-                                    ? 'shadow-md'
-                                    : ''
-                                }`}
-                                style={{
-                                  background: active
-                                    ? 'rgba(251,191,36,0.15)'
-                                    : 'transparent',
-                                  border: `1px solid ${
+                              return (
+                                <button
+                                  key={channel.id}
+                                  onClick={() =>
+                                    handleSelectChannel(
+                                      channel
+                                    )
+                                  }
+                                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-left group transition-all hover:scale-[1.01] ${
                                     active
-                                      ? 'rgba(251,191,36,0.3)'
-                                      : 'transparent'
-                                  }`,
-                                  color: active
-                                    ? COLORS.gold
-                                    : COLORS.muted
-                                }}
-                              >
-                                <div
-                                  className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0"
+                                      ? 'shadow-md'
+                                      : ''
+                                  }`}
                                   style={{
-                                    background:
-                                      getChannelColor(
-                                        channel,
-                                        active
-                                      ),
+                                    background: active
+                                      ? 'rgba(251,191,36,0.15)'
+                                      : 'transparent',
+                                    border: `1px solid ${
+                                      active
+                                        ? 'rgba(251,191,36,0.3)'
+                                        : 'transparent'
+                                    }`,
                                     color: active
                                       ? COLORS.gold
                                       : COLORS.muted
                                   }}
                                 >
-                                  <Icon size={16} />
-                                </div>
+                                  <div
+                                    className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0"
+                                    style={{
+                                      background:
+                                        getChannelColor(
+                                          channel,
+                                          active
+                                        ),
+                                      color: active
+                                        ? COLORS.gold
+                                        : COLORS.muted
+                                    }}
+                                  >
+                                    <Icon
+                                      size={16}
+                                    />
+                                  </div>
 
-                                <span
-                                  className={`text-[13.5px] font-bold truncate ${
-                                    active
-                                      ? 'text-amber-400'
-                                      : ''
-                                  }`}
-                                >
-                                  {channel.name}
-                                </span>
+                                  <span
+                                    className={`text-[13.5px] font-bold truncate ${
+                                      active
+                                        ? 'text-amber-400'
+                                        : ''
+                                    }`}
+                                  >
+                                    {channel.name}
+                                  </span>
 
-                                {active && (
-                                  <div className="ml-auto w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                                )}
-                              </button>
-                            );
-                          })}
+                                  {active && (
+                                    <div className="ml-auto w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                                  )}
+                                </button>
+                              );
+                            }
+                          )}
                         </div>
                       </div>
 
-                      {/* VOICE */}
+                      {/* VOICE CHANNELS */}
 
                       <div>
-                        <p
-                          className="text-[10px] font-black uppercase tracking-widest px-1 mb-2 flex items-center gap-1.5"
-                          style={{
-                            color: COLORS.muted
-                          }}
-                        >
-                          <Volume2 size={12} />
-                          Vocaux — {voiceChannels.length}
-                        </p>
+                        <div className="flex items-center justify-between px-1 mb-2">
+                          <p
+                            className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5"
+                            style={{
+                              color: COLORS.muted
+                            }}
+                          >
+                            <Volume2 size={12} />
+                            Vocaux —{' '}
+                            {voiceChannels.length}
+                          </p>
+                        </div>
 
                         <div className="space-y-1">
-                          {voiceChannels.map(channel => {
-                            const Icon =
-                              getChannelIcon(channel);
+                          {voiceChannels.map(
+                            (channel) => {
+                              const Icon =
+                                getChannelIcon(
+                                  channel
+                                );
 
-                            const active =
-                              selectedChannel?.id ===
-                              channel.id;
+                              const active =
+                                selectedChannel?.id ===
+                                channel.id;
 
-                            return (
-                              <button
-                                key={channel.id}
-                                onClick={() =>
-                                  handleSelectChannel(
-                                    channel
-                                  )
-                                }
-                                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-left hover:bg-white/5 transition-all"
-                                style={{
-                                  background: active
-                                    ? 'rgba(20,184,166,0.1)'
-                                    : 'transparent',
-                                  color: active
-                                    ? COLORS.teal
-                                    : COLORS.muted
-                                }}
-                              >
-                                <div
-                                  className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                              return (
+                                <button
+                                  key={channel.id}
+                                  onClick={() =>
+                                    handleSelectChannel(
+                                      channel
+                                    )
+                                  }
+                                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-[12px] text-left hover:bg-white/5 transition-all"
                                   style={{
                                     background: active
-                                      ? 'rgba(20,184,166,0.2)'
-                                      : COLORS.surface2
+                                      ? 'rgba(20,184,166,0.1)'
+                                      : 'transparent',
+                                    color: active
+                                      ? COLORS.teal
+                                      : COLORS.muted
                                   }}
                                 >
-                                  <Icon size={16} />
-                                </div>
+                                  <div
+                                    className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                                    style={{
+                                      background: active
+                                        ? 'rgba(20,184,166,0.2)'
+                                        : COLORS.surface2
+                                    }}
+                                  >
+                                    <Icon size={16} />
+                                  </div>
 
-                                <span className="text-[13.5px] font-bold">
-                                  {channel.name}
-                                </span>
+                                  <span className="text-[13.5px] font-bold">
+                                    {channel.name}
+                                  </span>
 
-                                <div className="ml-auto flex -space-x-1">
-                                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                                </div>
-                              </button>
-                            );
-                          })}
+                                  <div className="ml-auto flex -space-x-1">
+                                    <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                                  </div>
+                                </button>
+                              );
+                            }
+                          )}
                         </div>
                       </div>
                     </>
@@ -1555,13 +1549,15 @@ export default function CommunityTab({ onOpenProfile }) {
                 <Search
                   size={18}
                   className="absolute left-4 top-1/2 -translate-y-1/2"
-                  style={{ color: COLORS.muted }}
+                  style={{
+                    color: COLORS.muted
+                  }}
                 />
 
                 <input
                   value={search}
-                  onChange={e =>
-                    setSearch(e.target.value)
+                  onChange={(event) =>
+                    setSearch(event.target.value)
                   }
                   placeholder="Groupes, @amis..."
                   className="w-full pl-12 pr-4 py-4 rounded-[16px] text-[15px] font-medium outline-none border-2"
@@ -1591,99 +1587,108 @@ export default function CommunityTab({ onOpenProfile }) {
                       Groupes populaires
                     </p>
 
-                    {groups.slice(0, 5).map(group => {
-                      const category =
-                        getCategoryConfig(
-                          group.category
-                        );
+                    {groups.slice(0, 5).map(
+                      (group) => {
+                        const category =
+                          getCategoryConfig(
+                            group.category
+                          );
 
-                      const CategoryIcon =
-                        category.icon;
+                        const CategoryIcon =
+                          category.icon;
 
-                      return (
-                        <div
-                          key={group.id}
-                          onClick={() =>
-                            handleSelectGroup(group)
-                          }
-                          className="p-4 rounded-[20px] border-2 flex gap-4 cursor-pointer hover:scale-[1.02] transition-all group"
-                          style={{
-                            background:
-                              COLORS.surface2,
-                            borderColor:
-                              COLORS.border
-                          }}
-                        >
+                        return (
                           <div
-                            className="w-14 h-14 rounded-[16px] flex items-center justify-center font-black text-[18px] shrink-0 shadow-lg relative overflow-hidden"
+                            key={group.id}
+                            onClick={() =>
+                              handleSelectGroup(
+                                group
+                              )
+                            }
+                            className="p-4 rounded-[20px] border-2 flex gap-4 cursor-pointer hover:scale-[1.02] transition-all group"
                             style={{
                               background:
-                                group.avatar_url
-                                  ? 'transparent'
-                                  : `linear-gradient(135deg, ${category.color}, ${category.color}dd)`
+                                COLORS.surface2,
+                              borderColor:
+                                COLORS.border
                             }}
                           >
-                            {group.avatar_url ? (
-                              <img
-                                src={group.avatar_url}
-                                className="w-full h-full object-cover"
-                                alt=""
-                              />
-                            ) : (
-                              <CategoryIcon
-                                size={24}
-                                className="text-white"
-                              />
-                            )}
-
-                            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-                          </div>
-
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <p
-                                className="font-black text-[15px] truncate"
-                                style={{
-                                  color:
-                                    COLORS.ivory
-                                }}
-                              >
-                                {group.name}
-                              </p>
-
-                              <span
-                                className="text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1"
-                                style={{
-                                  background:
-                                    category.bg,
-                                  color:
-                                    category.color
-                                }}
-                              >
-                                <CategoryIcon size={10} />
-                                {category.label}
-                              </span>
-                            </div>
-
-                            <p
-                              className="text-[12px] line-clamp-2"
+                            <div
+                              className="w-14 h-14 rounded-[16px] flex items-center justify-center font-black text-[18px] shrink-0 shadow-lg relative overflow-hidden"
                               style={{
-                                color: COLORS.muted
+                                background:
+                                  group.avatar_url
+                                    ? 'transparent'
+                                    : `linear-gradient(135deg, ${category.color}, ${category.color}dd)`
                               }}
                             >
-                              {group.description ||
-                                `Communauté Baaro • ${
-                                  group.members?.length ||
-                                  0
-                                } membres`}
-                            </p>
+                              {group.avatar_url ? (
+                                <img
+                                  src={
+                                    group.avatar_url
+                                  }
+                                  className="w-full h-full object-cover"
+                                  alt=""
+                                />
+                              ) : (
+                                <CategoryIcon
+                                  size={24}
+                                  className="text-white"
+                                />
+                              )}
+
+                              <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <p
+                                  className="font-black text-[15px] truncate"
+                                  style={{
+                                    color:
+                                      COLORS.ivory
+                                  }}
+                                >
+                                  {group.name}
+                                </p>
+
+                                <span
+                                  className="text-[10px] px-2 py-0.5 rounded-full font-bold flex items-center gap-1"
+                                  style={{
+                                    background:
+                                      category.bg,
+                                    color:
+                                      category.color
+                                  }}
+                                >
+                                  <CategoryIcon
+                                    size={10}
+                                  />
+                                  {category.label}
+                                </span>
+                              </div>
+
+                              <p
+                                className="text-[12px] line-clamp-2"
+                                style={{
+                                  color:
+                                    COLORS.muted
+                                }}
+                              >
+                                {group.description ||
+                                  `Communauté Baaro • ${
+                                    group.members
+                                      ?.length || 0
+                                  } membres`}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      }
+                    )}
                   </div>
 
-                  {/* NEW MEMBERS */}
+                  {/* NEW USERS */}
 
                   <div className="space-y-3">
                     <p
@@ -1698,7 +1703,7 @@ export default function CommunityTab({ onOpenProfile }) {
                     <div className="space-y-2">
                       {allUsers
                         .slice(0, 6)
-                        .map(user => (
+                        .map((user) => (
                           <div
                             key={user.id}
                             className="flex items-center justify-between gap-3 p-3 rounded-[16px] border"
@@ -1718,7 +1723,14 @@ export default function CommunityTab({ onOpenProfile }) {
                               }
                             >
                               <img
-                                src={getAvatar(user)}
+                                src={
+                                  user.avatar_url ||
+                                  `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                                    user.display_name ||
+                                      user.handle ||
+                                      'user'
+                                  )}`
+                                }
                                 className="w-11 h-11 rounded-full"
                                 alt=""
                               />
@@ -1775,12 +1787,14 @@ export default function CommunityTab({ onOpenProfile }) {
                     </p>
 
                     {searchedGroups
-                      .slice(0, 6)
-                      .map(group => (
+                      .slice(0, 10)
+                      .map((group) => (
                         <div
                           key={group.id}
                           onClick={() =>
-                            handleSelectGroup(group)
+                            handleSelectGroup(
+                              group
+                            )
                           }
                           className="p-3 rounded-[16px] border flex gap-3 cursor-pointer"
                           style={{
@@ -1791,13 +1805,23 @@ export default function CommunityTab({ onOpenProfile }) {
                           }}
                         >
                           <div
-                            className="w-12 h-12 rounded-xl flex items-center justify-center font-black"
+                            className="w-12 h-12 rounded-xl flex items-center justify-center font-black overflow-hidden"
                             style={{
                               background:
                                 `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)`
                             }}
                           >
-                            {group.name?.[0]}
+                            {group.avatar_url ? (
+                              <img
+                                src={
+                                  group.avatar_url
+                                }
+                                className="w-full h-full object-cover"
+                                alt=""
+                              />
+                            ) : (
+                              group.name?.[0]
+                            )}
                           </div>
 
                           <div className="flex-1 min-w-0">
@@ -1812,7 +1836,7 @@ export default function CommunityTab({ onOpenProfile }) {
                             </p>
 
                             <p
-                              className="text-[12px]"
+                              className="text-[12px] truncate"
                               style={{
                                 color:
                                   COLORS.muted
@@ -1826,7 +1850,7 @@ export default function CommunityTab({ onOpenProfile }) {
                       ))}
                   </div>
 
-                  {/* SEARCH PEOPLE */}
+                  {/* SEARCH USERS */}
 
                   <div className="space-y-2">
                     <p
@@ -1840,8 +1864,8 @@ export default function CommunityTab({ onOpenProfile }) {
                     </p>
 
                     {searchedUsers
-                      .slice(0, 8)
-                      .map(user => (
+                      .slice(0, 10)
+                      .map((user) => (
                         <div
                           key={user.id}
                           className="flex items-center justify-between gap-2 p-3 rounded-[16px] border"
@@ -1861,7 +1885,14 @@ export default function CommunityTab({ onOpenProfile }) {
                             }
                           >
                             <img
-                              src={getAvatar(user)}
+                              src={
+                                user.avatar_url ||
+                                `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                                  user.display_name ||
+                                    user.handle ||
+                                    'user'
+                                )}`
+                              }
                               className="w-11 h-11 rounded-full"
                               alt=""
                             />
@@ -1905,7 +1936,9 @@ export default function CommunityTab({ onOpenProfile }) {
             </div>
           )}
 
-          {/* FRIENDS */}
+          {/* =================================================
+              FRIENDS
+          ================================================== */}
 
           {(mobileView === 'friends' ||
             activeTab === 'friends') && (
@@ -1927,7 +1960,9 @@ export default function CommunityTab({ onOpenProfile }) {
             </div>
           )}
 
-          {/* CONTACTS */}
+          {/* =================================================
+              CONTACTS
+          ================================================== */}
 
           {(mobileView === 'contacts' ||
             activeTab === 'contacts') && (
@@ -1950,10 +1985,16 @@ export default function CommunityTab({ onOpenProfile }) {
         } md:flex flex-1 flex-col min-w-0`}
         style={{ background: COLORS.bg }}
       >
+        {/* =================================================
+            NO CHANNEL
+        ================================================== */}
+
         {!selectedChannel ? (
           <div
             className="flex-1 flex flex-col items-center justify-center p-8 text-center"
-            style={{ color: COLORS.muted }}
+            style={{
+              color: COLORS.muted
+            }}
           >
             <div
               className="w-24 h-24 rounded-[28px] flex items-center justify-center mb-6"
@@ -2032,16 +2073,88 @@ export default function CommunityTab({ onOpenProfile }) {
             </div>
 
             <div className="flex-1 flex flex-col items-center justify-center p-8 gap-8">
-              {voiceParticipants.length === 0 ? (
+              {voiceLoading ? (
+                <div
+                  className="text-sm font-bold"
+                  style={{
+                    color: COLORS.muted
+                  }}
+                >
+                  Chargement des participants...
+                </div>
+              ) : voiceParticipants?.length ? (
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 gap-6">
+                  {voiceParticipants.map(
+                    (participant) => {
+                      const profile =
+                        participant.profiles;
+
+                      const avatar =
+                        profile?.avatar_url ||
+                        `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                          profile?.display_name ||
+                            profile?.handle ||
+                            participant.user_id ||
+                            'user'
+                        )}`;
+
+                      return (
+                        <div
+                          key={`${participant.channel_id}-${participant.user_id}`}
+                          className="flex flex-col items-center gap-2"
+                        >
+                          <div className="relative">
+                            <img
+                              src={avatar}
+                              className={`w-20 h-20 rounded-full object-cover ${
+                                participant.user_id ===
+                                id
+                                  ? 'ring-2 ring-emerald-400'
+                                  : ''
+                              }`}
+                              alt=""
+                            />
+
+                            <div
+                              className="absolute bottom-0 right-0 w-4 h-4 rounded-full border-2"
+                              style={{
+                                background:
+                                  '#22c55e',
+                                borderColor:
+                                  COLORS.bg
+                              }}
+                            />
+                          </div>
+
+                          <span
+                            className="text-xs font-bold max-w-[90px] truncate"
+                            style={{
+                              color:
+                                COLORS.ivory
+                            }}
+                          >
+                            {profile?.display_name?.split(
+                              ' '
+                            )[0] ||
+                              profile?.handle ||
+                              'Membre'}
+                          </span>
+                        </div>
+                      );
+                    }
+                  )}
+                </div>
+              ) : (
                 <div className="text-center">
                   <div
-                    className="w-20 h-20 mx-auto mb-4 rounded-full flex items-center justify-center"
+                    className="w-20 h-20 rounded-full mx-auto mb-4 flex items-center justify-center"
                     style={{
-                      background: COLORS.surface2
+                      background:
+                        COLORS.surface2
                     }}
                   >
-                    <Mic
-                      size={28}
+                    <Volume2
+                      size={30}
                       style={{
                         color: COLORS.muted
                       }}
@@ -2063,108 +2176,47 @@ export default function CommunityTab({ onOpenProfile }) {
                       color: COLORS.muted
                     }}
                   >
-                    Sois le premier à rejoindre le vocal.
+                    Sois le premier à rejoindre le
+                    vocal.
                   </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-3 gap-6">
-                  {voiceParticipants.map(
-                    participant => {
-                      const profile =
-                        participant.profiles || {};
-
-                      return (
-                        <div
-                          key={`${participant.channel_id}-${participant.user_id}`}
-                          className="flex flex-col items-center gap-2"
-                        >
-                          <div className="relative">
-                            <img
-                              src={getAvatar(profile)}
-                              className={`w-20 h-20 rounded-full ${
-                                participant.user_id === id
-                                  ? 'ring-2 ring-amber-400'
-                                  : ''
-                              }`}
-                              alt=""
-                            />
-
-                            {participant.is_muted && (
-                              <div className="absolute bottom-0 right-0 w-6 h-6 rounded-full bg-red-500 flex items-center justify-center">
-                                <Mic size={11} />
-                              </div>
-                            )}
-                          </div>
-
-                          <span
-                            className="text-xs font-bold"
-                            style={{
-                              color:
-                                COLORS.ivory
-                            }}
-                          >
-                            {profile.display_name
-                              ?.split(' ')[0] ||
-                              'Membre'}
-                          </span>
-                        </div>
-                      );
-                    }
-                  )}
                 </div>
               )}
 
               <div className="flex gap-3">
                 {!isJoined ? (
                   <button
-                    disabled={voiceLoading}
                     onClick={async () => {
                       try {
-                        setErrorMessage('');
                         await joinVoice();
                       } catch (error) {
-                        console.error(
-                          'joinVoice:',
-                          error
-                        );
-
-                        setErrorMessage(
+                        setActionError(
                           error?.message ||
-                          'Impossible de rejoindre le vocal.'
+                            'Impossible de rejoindre le vocal.'
                         );
                       }
                     }}
-                    className="px-10 py-4 rounded-full font-black flex items-center gap-3 disabled:opacity-50"
+                    className="px-10 py-4 rounded-full font-black flex items-center gap-3"
                     style={{
                       background: COLORS.teal,
                       color: COLORS.bg
                     }}
                   >
                     <Mic size={20} />
-                    {voiceLoading
-                      ? 'Connexion...'
-                      : 'Rejoindre'}
+                    Rejoindre
                   </button>
                 ) : (
                   <button
-                    disabled={voiceLoading}
                     onClick={async () => {
                       try {
-                        setErrorMessage('');
                         await leaveVoice();
                       } catch (error) {
-                        console.error(
-                          'leaveVoice:',
-                          error
-                        );
-
-                        setErrorMessage(
+                        setActionError(
                           error?.message ||
-                          'Impossible de quitter le vocal.'
+                            'Impossible de quitter le vocal.'
                         );
                       }
                     }}
-                    className="px-10 py-4 rounded-full font-black bg-red-500 text-white flex items-center gap-3 disabled:opacity-50"
+                    className="px-10 py-4 rounded-full font-black bg-red-500 text-white flex items-center gap-3"
                   >
                     <X size={20} />
                     Quitter
@@ -2175,10 +2227,12 @@ export default function CommunityTab({ onOpenProfile }) {
           </div>
         ) : (
           /* =================================================
-             TEXT CHAT
+             TEXT CHANNEL
           ================================================== */
 
           <>
+            {/* CHAT HEADER */}
+
             <div
               className="h-[64px] px-4 flex items-center justify-between border-b"
               style={{
@@ -2204,10 +2258,9 @@ export default function CommunityTab({ onOpenProfile }) {
 
                   return (
                     <div
-                      className="w-8 h-8 rounded-[10px] flex items-center justify-center"
+                      className="w-8 h-8 rounded-[10px] flex items-center justify-center shrink-0"
                       style={{
-                        background:
-                          `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)`,
+                        background: `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)`,
                         color: COLORS.bg
                       }}
                     >
@@ -2216,79 +2269,83 @@ export default function CommunityTab({ onOpenProfile }) {
                   );
                 })()}
 
-                <h3
-                  className="font-black text-[15px] truncate"
-                  style={{
-                    color: COLORS.ivory
-                  }}
-                >
-                  {selectedChannel.name}
-                </h3>
+                <div className="min-w-0">
+                  <h3
+                    className="font-black text-[15px] truncate"
+                    style={{
+                      color: COLORS.ivory
+                    }}
+                  >
+                    {selectedChannel.name}
+                  </h3>
 
-                <span
-                  className="hidden sm:block text-[11px] px-2 py-1 rounded-full font-bold truncate max-w-[250px]"
-                  style={{
-                    background: COLORS.surface2,
-                    color: COLORS.muted
-                  }}
-                >
-                  {selectedChannel.topic ||
-                    selectedChannel.description ||
-                    'Discussion'}
-                </span>
+                  <p
+                    className="text-[10px] truncate"
+                    style={{
+                      color: COLORS.muted
+                    }}
+                  >
+                    {selectedChannel.topic ||
+                      selectedChannel.description ||
+                      'Discussion'}
+                  </p>
+                </div>
               </div>
 
               <button
                 onClick={() =>
-                  setShowMembers(!showMembers)
+                  setShowMembers(
+                    (current) => !current
+                  )
                 }
                 className="p-2.5 rounded-xl"
                 style={{
-                  background: COLORS.surface2,
+                  background: showMembers
+                    ? 'rgba(251,191,36,0.15)'
+                    : COLORS.surface2,
                   color: showMembers
                     ? COLORS.gold
                     : COLORS.muted
                 }}
-                title="Membres"
+                title="Afficher les membres"
               >
                 <Users size={18} />
               </button>
             </div>
 
+            {/* ACTION ERROR */}
+
+            {actionError && (
+              <div
+                className="mx-4 mt-3 px-4 py-3 rounded-xl border flex items-center justify-between gap-3"
+                style={{
+                  background:
+                    'rgba(239,68,68,0.10)',
+                  borderColor:
+                    'rgba(239,68,68,0.25)',
+                  color: '#fca5a5'
+                }}
+              >
+                <span className="text-xs font-bold">
+                  {actionError}
+                </span>
+
+                <button
+                  onClick={() =>
+                    setActionError('')
+                  }
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            )}
+
             <div className="flex flex-1 overflow-hidden">
-              {/* CHAT */}
+              {/* =================================================
+                  MESSAGE AREA
+              ================================================== */}
 
               <div className="flex-1 flex flex-col min-w-0">
-                {/* ERROR */}
-
-                {errorMessage && (
-                  <div
-                    className="mx-4 mt-3 px-4 py-3 rounded-[14px] border flex items-center gap-3"
-                    style={{
-                      background:
-                        'rgba(239,68,68,0.08)',
-                      borderColor:
-                        'rgba(239,68,68,0.25)',
-                      color: '#fca5a5'
-                    }}
-                  >
-                    <span className="flex-1 text-xs font-medium">
-                      {errorMessage}
-                    </span>
-
-                    <button
-                      onClick={() =>
-                        setErrorMessage('')
-                      }
-                      className="shrink-0"
-                    >
-                      <X size={14} />
-                    </button>
-                  </div>
-                )}
-
-                {/* MESSAGES */}
-
                 <div className="flex-1 overflow-y-auto p-4 space-y-1">
                   {messages.length === 0 ? (
                     <div className="text-center py-24">
@@ -2320,7 +2377,8 @@ export default function CommunityTab({ onOpenProfile }) {
                       <p
                         className="font-black text-[16px] mb-1"
                         style={{
-                          color: COLORS.ivory
+                          color:
+                            COLORS.ivory
                         }}
                       >
                         Bienvenue dans{' '}
@@ -2330,99 +2388,137 @@ export default function CommunityTab({ onOpenProfile }) {
                       <p
                         className="text-[13px]"
                         style={{
-                          color: COLORS.muted
+                          color:
+                            COLORS.muted
                         }}
                       >
-                        C'est le début de l'histoire.
+                        C'est le début de
+                        l'histoire.
                       </p>
                     </div>
                   ) : (
-                    messages.map((message, index) => {
-                      const previous =
-                        messages[index - 1];
+                    messages.map(
+                      (message, index) => {
+                        const previous =
+                          messages[index - 1];
 
-                      const showAvatar =
-                        !previous ||
-                        previous.sender_id !==
-                          message.sender_id;
+                        const showAvatar =
+                          !previous ||
+                          previous.sender_id !==
+                            message.sender_id;
 
-                      return (
-                        <div
-                          key={message.id}
-                          className={`flex gap-3 px-2 py-1.5 rounded-[12px] hover:bg-white/[0.03] ${
-                            showAvatar
-                              ? 'mt-4'
-                              : ''
-                          }`}
-                        >
-                          <div className="w-9 shrink-0">
-                            {showAvatar && (
-                              <img
-                                src={getAvatar(
-                                  message.profiles
-                                )}
-                                className="w-9 h-9 rounded-full"
-                                alt=""
-                              />
-                            )}
+                        const profile =
+                          message.profiles;
+
+                        const avatar =
+                          profile?.avatar_url ||
+                          `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                            profile?.display_name ||
+                              profile?.handle ||
+                              message.sender_id ||
+                              'user'
+                          )}`;
+
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex gap-3 px-2 py-1.5 rounded-[12px] hover:bg-white/[0.03] ${
+                              showAvatar
+                                ? 'mt-4'
+                                : ''
+                            }`}
+                          >
+                            <div className="w-9 shrink-0">
+                              {showAvatar && (
+                                <img
+                                  src={avatar}
+                                  className="w-9 h-9 rounded-full object-cover"
+                                  alt=""
+                                />
+                              )}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              {showAvatar && (
+                                <div className="flex items-baseline gap-2">
+                                  <span
+                                    className="text-[14px] font-black"
+                                    style={{
+                                      color:
+                                        COLORS.ivory
+                                    }}
+                                  >
+                                    {profile?.display_name ||
+                                      'Membre'}
+                                  </span>
+
+                                  <span
+                                    className="text-[11px]"
+                                    style={{
+                                      color:
+                                        COLORS.muted
+                                    }}
+                                  >
+                                    {message.created_at
+                                      ? new Date(
+                                          message.created_at
+                                        ).toLocaleTimeString(
+                                          'fr-FR',
+                                          {
+                                            hour: '2-digit',
+                                            minute:
+                                              '2-digit'
+                                          }
+                                        )
+                                      : ''}
+                                  </span>
+                                </div>
+                              )}
+
+                              <p
+                                className="text-[14.5px] leading-[22px] break-words"
+                                style={{
+                                  color:
+                                    COLORS.ivory
+                                }}
+                              >
+                                {message.text ||
+                                  message.content}
+                              </p>
+                            </div>
                           </div>
-
-                          <div className="flex-1 min-w-0">
-                            {showAvatar && (
-                              <div className="flex items-baseline gap-2">
-                                <span
-                                  className="text-[14px] font-black"
-                                  style={{
-                                    color:
-                                      COLORS.ivory
-                                  }}
-                                >
-                                  {message.profiles
-                                    ?.display_name ||
-                                    'Membre'}
-                                </span>
-
-                                <span
-                                  className="text-[11px]"
-                                  style={{
-                                    color:
-                                      COLORS.muted
-                                  }}
-                                >
-                                  {message.created_at
-                                    ? new Date(
-                                        message.created_at
-                                      ).toLocaleTimeString(
-                                        'fr-FR',
-                                        {
-                                          hour: '2-digit',
-                                          minute: '2-digit'
-                                        }
-                                      )
-                                    : ''}
-                                </span>
-                              </div>
-                            )}
-
-                            <p
-                              className="text-[14.5px] leading-[22px] break-words"
-                              style={{
-                                color: COLORS.ivory
-                              }}
-                            >
-                              {message.text ||
-                                message.content}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })
+                        );
+                      }
+                    )
                   )}
 
                   <div ref={messagesEndRef} />
                 </div>
 
-                {/* COMPOSER */}
+                {/* MESSAGE ERROR */}
+
+                {messageError && (
+                  <div
+                    className="mx-3 mb-2 px-3 py-2 rounded-xl text-xs font-bold flex items-center justify-between"
+                    style={{
+                      background:
+                        'rgba(239,68,68,0.10)',
+                      color: '#fca5a5'
+                    }}
+                  >
+                    <span>{messageError}</span>
+
+                    <button
+                      onClick={() =>
+                        setMessageError('')
+                      }
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+
+                {/* MESSAGE INPUT */}
 
                 <div
                   className="p-3 border-t"
@@ -2442,29 +2538,30 @@ export default function CommunityTab({ onOpenProfile }) {
                   >
                     <textarea
                       value={msgText}
-                      onChange={e =>
-                        setMsgText(e.target.value)
-                      }
-                      onKeyDown={e => {
-                        if (
-                          e.key === 'Enter' &&
-                          !e.shiftKey
-                        ) {
-                          e.preventDefault();
-                          handleSendMessage();
+                      onChange={(event) => {
+                        setMsgText(
+                          event.target.value
+                        );
+
+                        if (messageError) {
+                          setMessageError('');
                         }
                       }}
+                      onKeyDown={
+                        handleMessageKeyDown
+                      }
                       placeholder={`Message dans ${selectedChannel.name}`}
                       rows={1}
-                      disabled={sendingMessage}
-                      className="flex-1 bg-transparent py-2.5 text-[15px] font-medium outline-none resize-none max-h-[120px] disabled:opacity-50"
+                      className="flex-1 bg-transparent py-2.5 text-[15px] font-medium outline-none resize-none max-h-[120px]"
                       style={{
                         color: COLORS.ivory
                       }}
                     />
 
                     <button
-                      onClick={handleSendMessage}
+                      onClick={
+                        handleSendMessage
+                      }
                       disabled={
                         !msgText.trim() ||
                         sendingMessage
@@ -2483,22 +2580,271 @@ export default function CommunityTab({ onOpenProfile }) {
                             : COLORS.muted
                       }}
                     >
-                      <Send size={16} />
+                      {sendingMessage ? (
+                        <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                      ) : (
+                        <Send size={16} />
+                      )}
                     </button>
                   </div>
                 </div>
               </div>
 
-              {/* MEMBERS */}
+              {/* =================================================
+                  MEMBERS PANEL
+              ================================================== */}
 
-              <MembersPanel />
+              {showMembers && (
+                <aside
+                  className="hidden md:flex w-[280px] flex-col border-l shrink-0"
+                  style={{
+                    background:
+                      COLORS.surface,
+                    borderColor:
+                      COLORS.border
+                  }}
+                >
+                  <div
+                    className="h-[64px] px-4 flex items-center justify-between border-b shrink-0"
+                    style={{
+                      borderColor:
+                        COLORS.border
+                    }}
+                  >
+                    <div>
+                      <p
+                        className="font-black text-[13px]"
+                        style={{
+                          color:
+                            COLORS.ivory
+                        }}
+                      >
+                        Membres
+                      </p>
+
+                      <p
+                        className="text-[10px]"
+                        style={{
+                          color:
+                            COLORS.muted
+                        }}
+                      >
+                        {selectedGroup?.members
+                          ?.length || 0}{' '}
+                        membre
+                        {(selectedGroup
+                          ?.members?.length ||
+                          0) > 1
+                          ? 's'
+                          : ''}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() =>
+                        setShowMembers(false)
+                      }
+                      className="p-2 rounded-lg hover:bg-white/10"
+                      style={{
+                        color:
+                          COLORS.muted
+                      }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  <div className="flex-1 overflow-y-auto p-3">
+                    {selectedGroup?.members
+                      ?.length ? (
+                      <div className="space-y-1">
+                        {selectedGroup.members.map(
+                          (member) => {
+                            const profile =
+                              member.profiles;
+
+                            const RoleIcon =
+                              getRoleIcon(
+                                member.role
+                              );
+
+                            const avatar =
+                              profile?.avatar_url ||
+                              `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(
+                                profile?.display_name ||
+                                  profile?.handle ||
+                                  member.user_id ||
+                                  'user'
+                              )}`;
+
+                            const isSelf =
+                              member.user_id ===
+                              id;
+
+                            const canRemove =
+                              isAdmin &&
+                              !isSelf &&
+                              member.role !==
+                                'owner';
+
+                            return (
+                              <div
+                                key={`${member.group_id}-${member.user_id}`}
+                                className="flex items-center gap-3 p-2.5 rounded-xl hover:bg-white/[0.04] group"
+                              >
+                                <button
+                                  onClick={() =>
+                                    onOpenProfile?.(
+                                      member.user_id
+                                    )
+                                  }
+                                  className="shrink-0"
+                                >
+                                  <img
+                                    src={avatar}
+                                    className="w-9 h-9 rounded-full object-cover"
+                                    alt=""
+                                  />
+                                </button>
+
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <p
+                                      className="text-[12px] font-black truncate"
+                                      style={{
+                                        color:
+                                          COLORS.ivory
+                                      }}
+                                    >
+                                      {profile?.display_name ||
+                                        profile?.handle ||
+                                        'Membre'}
+                                    </p>
+
+                                    {isSelf && (
+                                      <span
+                                        className="text-[8px] px-1.5 py-0.5 rounded-full font-black"
+                                        style={{
+                                          background:
+                                            'rgba(251,191,36,0.15)',
+                                          color:
+                                            COLORS.gold
+                                        }}
+                                      >
+                                        TOI
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  <div className="flex items-center gap-1">
+                                    <RoleIcon
+                                      size={10}
+                                      style={{
+                                        color:
+                                          getRoleColor(
+                                            member.role
+                                          )
+                                      }}
+                                    />
+
+                                    <span
+                                      className="text-[9px] font-bold"
+                                      style={{
+                                        color:
+                                          getRoleColor(
+                                            member.role
+                                          )
+                                      }}
+                                    >
+                                      {getRoleLabel(
+                                        member.role
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {canRemove && (
+                                  <button
+                                    onClick={() =>
+                                      handleRemoveMember(
+                                        member
+                                      )
+                                    }
+                                    className="opacity-0 group-hover:opacity-100 p-2 rounded-lg hover:bg-red-500/10 transition-all"
+                                    style={{
+                                      color:
+                                        '#f87171'
+                                    }}
+                                    title="Retirer du groupe"
+                                  >
+                                    <UserMinus
+                                      size={15}
+                                    />
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          }
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-10">
+                        <Users
+                          size={28}
+                          className="mx-auto mb-3 opacity-30"
+                        />
+
+                        <p
+                          className="text-xs font-bold"
+                          style={{
+                            color:
+                              COLORS.muted
+                          }}
+                        >
+                          Aucun membre
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ADMIN INFO */}
+
+                  {isAdmin && (
+                    <div
+                      className="p-3 border-t"
+                      style={{
+                        borderColor:
+                          COLORS.border
+                      }}
+                    >
+                      <button
+                        onClick={() =>
+                          setShowCreateChannel(
+                            true
+                          )
+                        }
+                        className="w-full py-2.5 rounded-xl flex items-center justify-center gap-2 text-xs font-black"
+                        style={{
+                          background:
+                            COLORS.surface2,
+                          color:
+                            COLORS.muted
+                        }}
+                      >
+                        <Plus size={14} />
+                        Nouveau canal
+                      </button>
+                    </div>
+                  )}
+                </aside>
+              )}
             </div>
           </>
         )}
       </div>
 
       {/* =====================================================
-          MOBILE BOTTOM
+          MOBILE BOTTOM NAVIGATION
       ====================================================== */}
 
       <div
@@ -2534,20 +2880,18 @@ export default function CommunityTab({ onOpenProfile }) {
             icon: Phone,
             label: 'Contacts'
           }
-        ].map(tab => {
+        ].map((tab) => {
           const Icon = tab.icon;
 
           const active =
             mobileView === tab.id ||
-            (
-              tab.id === 'groups' &&
+            (tab.id === 'groups' &&
               activeTab === 'groups' &&
               ![
                 'discover',
                 'friends',
                 'contacts'
-              ].includes(mobileView)
-            );
+              ].includes(mobileView));
 
           return (
             <button
@@ -2599,7 +2943,7 @@ export default function CommunityTab({ onOpenProfile }) {
         <div
           className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-end md:items-center justify-center z-[100] p-0 md:p-4"
           onClick={() =>
-            !actionLoading &&
+            !creatingGroup &&
             setShowCreateGroup(false)
           }
         >
@@ -2609,8 +2953,8 @@ export default function CommunityTab({ onOpenProfile }) {
               background: COLORS.surface,
               borderColor: COLORS.border
             }}
-            onClick={e =>
-              e.stopPropagation()
+            onClick={(event) =>
+              event.stopPropagation()
             }
           >
             <div
@@ -2620,21 +2964,36 @@ export default function CommunityTab({ onOpenProfile }) {
               }}
             />
 
-            <h3
-              className="font-black text-[20px] mb-6"
-              style={{
-                color: COLORS.ivory
-              }}
-            >
-              Créer un groupe
-            </h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3
+                className="font-black text-[20px]"
+                style={{
+                  color: COLORS.ivory
+                }}
+              >
+                Créer un groupe
+              </h3>
+
+              <button
+                onClick={() =>
+                  setShowCreateGroup(false)
+                }
+                disabled={creatingGroup}
+                className="p-2 rounded-xl hover:bg-white/10"
+                style={{
+                  color: COLORS.muted
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
 
             <input
               value={newGroup.name}
-              onChange={e =>
+              onChange={(event) =>
                 setNewGroup({
                   ...newGroup,
-                  name: e.target.value
+                  name: event.target.value
                 })
               }
               placeholder="Nom du groupe"
@@ -2645,15 +3004,15 @@ export default function CommunityTab({ onOpenProfile }) {
                 color: COLORS.ivory
               }}
               autoFocus
-              disabled={actionLoading}
             />
 
             <textarea
               value={newGroup.description}
-              onChange={e =>
+              onChange={(event) =>
                 setNewGroup({
                   ...newGroup,
-                  description: e.target.value
+                  description:
+                    event.target.value
                 })
               }
               placeholder="Description"
@@ -2664,12 +3023,11 @@ export default function CommunityTab({ onOpenProfile }) {
                 borderColor: COLORS.border,
                 color: COLORS.ivory
               }}
-              disabled={actionLoading}
             />
 
             <div className="mb-5">
               <p
-                className="text-[11px] font-black uppercase mb-2"
+                className="text-[10px] font-black uppercase tracking-widest mb-2"
                 style={{
                   color: COLORS.muted
                 }}
@@ -2685,20 +3043,20 @@ export default function CommunityTab({ onOpenProfile }) {
                       is_public: true
                     })
                   }
-                  className="flex-1 py-3 rounded-[14px] border-2 font-black flex items-center justify-center gap-2"
+                  className="flex-1 py-3 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-black"
                   style={{
                     background:
                       newGroup.is_public
-                        ? COLORS.gold
+                        ? 'rgba(20,184,166,0.15)'
                         : COLORS.surface2,
-                    color:
-                      newGroup.is_public
-                        ? COLORS.bg
-                        : COLORS.muted,
                     borderColor:
                       newGroup.is_public
-                        ? COLORS.gold
-                        : COLORS.border
+                        ? COLORS.teal
+                        : COLORS.border,
+                    color:
+                      newGroup.is_public
+                        ? COLORS.teal
+                        : COLORS.muted
                   }}
                 >
                   <Globe size={15} />
@@ -2712,20 +3070,20 @@ export default function CommunityTab({ onOpenProfile }) {
                       is_public: false
                     })
                   }
-                  className="flex-1 py-3 rounded-[14px] border-2 font-black flex items-center justify-center gap-2"
+                  className="flex-1 py-3 rounded-xl border-2 flex items-center justify-center gap-2 text-xs font-black"
                   style={{
                     background:
                       !newGroup.is_public
-                        ? COLORS.gold
+                        ? 'rgba(251,191,36,0.15)'
                         : COLORS.surface2,
-                    color:
-                      !newGroup.is_public
-                        ? COLORS.bg
-                        : COLORS.muted,
                     borderColor:
                       !newGroup.is_public
                         ? COLORS.gold
-                        : COLORS.border
+                        : COLORS.border,
+                    color:
+                      !newGroup.is_public
+                        ? COLORS.gold
+                        : COLORS.muted
                   }}
                 >
                   <Lock size={15} />
@@ -2734,10 +3092,23 @@ export default function CommunityTab({ onOpenProfile }) {
               </div>
             </div>
 
+            <p
+              className="text-[10px] font-black uppercase tracking-widest mb-2"
+              style={{
+                color: COLORS.muted
+              }}
+            >
+              Catégorie
+            </p>
+
             <div className="flex gap-2 flex-wrap mb-6">
               {CATEGORIES.slice(1).map(
-                category => {
+                (category) => {
                   const Icon = category.icon;
+
+                  const active =
+                    newGroup.category ===
+                    category.id;
 
                   return (
                     <button
@@ -2750,27 +3121,20 @@ export default function CommunityTab({ onOpenProfile }) {
                         })
                       }
                       className={`flex items-center gap-1.5 px-4 py-2.5 rounded-full text-[13px] font-black border-2 ${
-                        newGroup.category ===
-                        category.id
+                        active
                           ? 'scale-105 shadow'
                           : ''
                       }`}
                       style={{
-                        background:
-                          newGroup.category ===
-                          category.id
-                            ? COLORS.gold
-                            : COLORS.surface2,
-                        color:
-                          newGroup.category ===
-                          category.id
-                            ? COLORS.bg
-                            : COLORS.muted,
-                        borderColor:
-                          newGroup.category ===
-                          category.id
-                            ? COLORS.gold
-                            : COLORS.border
+                        background: active
+                          ? COLORS.gold
+                          : COLORS.surface2,
+                        color: active
+                          ? COLORS.bg
+                          : COLORS.muted,
+                        borderColor: active
+                          ? COLORS.gold
+                          : COLORS.border
                       }}
                     >
                       <Icon size={14} />
@@ -2781,18 +3145,16 @@ export default function CommunityTab({ onOpenProfile }) {
               )}
             </div>
 
-            {errorMessage && (
+            {actionError && (
               <div
-                className="mb-4 p-3 rounded-xl text-xs border"
+                className="mb-4 px-3 py-2.5 rounded-xl text-xs font-bold"
                 style={{
                   background:
-                    'rgba(239,68,68,0.08)',
-                  borderColor:
-                    'rgba(239,68,68,0.25)',
+                    'rgba(239,68,68,0.10)',
                   color: '#fca5a5'
                 }}
               >
-                {errorMessage}
+                {actionError}
               </div>
             )}
 
@@ -2801,11 +3163,10 @@ export default function CommunityTab({ onOpenProfile }) {
                 onClick={() =>
                   setShowCreateGroup(false)
                 }
-                disabled={actionLoading}
+                disabled={creatingGroup}
                 className="flex-1 py-4 rounded-[14px] font-black disabled:opacity-50"
                 style={{
-                  background:
-                    COLORS.surface2,
+                  background: COLORS.surface2,
                   color: COLORS.muted
                 }}
               >
@@ -2816,18 +3177,25 @@ export default function CommunityTab({ onOpenProfile }) {
                 onClick={handleCreateGroup}
                 disabled={
                   !newGroup.name.trim() ||
-                  actionLoading
+                  creatingGroup
                 }
-                className="flex-1 py-4 rounded-[14px] font-black disabled:opacity-50"
+                className="flex-1 py-4 rounded-[14px] font-black disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{
-                  background:
-                    `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)`,
+                  background: `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)`,
                   color: COLORS.bg
                 }}
               >
-                {actionLoading
-                  ? 'Création...'
-                  : 'Créer'}
+                {creatingGroup ? (
+                  <>
+                    <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                    Création...
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} />
+                    Créer
+                  </>
+                )}
               </button>
             </div>
           </div>
@@ -2842,7 +3210,7 @@ export default function CommunityTab({ onOpenProfile }) {
         <div
           className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-end md:items-center justify-center z-[100] p-0 md:p-4"
           onClick={() =>
-            !actionLoading &&
+            !creatingChannel &&
             setShowCreateChannel(false)
           }
         >
@@ -2852,26 +3220,56 @@ export default function CommunityTab({ onOpenProfile }) {
               background: COLORS.surface,
               borderColor: COLORS.border
             }}
-            onClick={e =>
-              e.stopPropagation()
+            onClick={(event) =>
+              event.stopPropagation()
             }
           >
-            <h3
-              className="font-black text-[18px] mb-6"
+            <div className="flex items-center justify-between mb-6">
+              <h3
+                className="font-black text-[18px]"
+                style={{
+                  color: COLORS.ivory
+                }}
+              >
+                Nouveau canal
+              </h3>
+
+              <button
+                onClick={() =>
+                  setShowCreateChannel(false)
+                }
+                disabled={creatingChannel}
+                className="p-2 rounded-xl hover:bg-white/10"
+                style={{
+                  color: COLORS.muted
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <p
+              className="text-xs mb-4"
               style={{
-                color: COLORS.ivory
+                color: COLORS.muted
               }}
             >
-              Nouveau canal dans{' '}
-              {selectedGroup?.name}
-            </h3>
+              Dans{' '}
+              <strong
+                style={{
+                  color: COLORS.ivory
+                }}
+              >
+                {selectedGroup?.name}
+              </strong>
+            </p>
 
             <input
               value={newChannel.name}
-              onChange={e =>
+              onChange={(event) =>
                 setNewChannel({
                   ...newChannel,
-                  name: e.target.value
+                  name: event.target.value
                 })
               }
               placeholder="nom-du-canal"
@@ -2882,25 +3280,23 @@ export default function CommunityTab({ onOpenProfile }) {
                 color: COLORS.ivory
               }}
               autoFocus
-              disabled={actionLoading}
             />
 
             <input
               value={newChannel.topic}
-              onChange={e =>
+              onChange={(event) =>
                 setNewChannel({
                   ...newChannel,
-                  topic: e.target.value
+                  topic: event.target.value
                 })
               }
-              placeholder="Sujet / description (optionnel)"
+              placeholder="Sujet ou description du canal"
               className="w-full p-4 rounded-[14px] mb-4 text-[14px] outline-none border-2"
               style={{
                 background: COLORS.surface2,
                 borderColor: COLORS.border,
                 color: COLORS.ivory
               }}
-              disabled={actionLoading}
             />
 
             <div className="flex gap-3 mb-6">
@@ -2914,20 +3310,25 @@ export default function CommunityTab({ onOpenProfile }) {
                 className="flex-1 py-3.5 rounded-[14px] font-black flex items-center justify-center gap-2 border-2"
                 style={{
                   background:
-                    newChannel.type === 'text'
+                    newChannel.type ===
+                    'text'
                       ? COLORS.gold
                       : COLORS.surface2,
                   color:
-                    newChannel.type === 'text'
+                    newChannel.type ===
+                    'text'
                       ? COLORS.bg
                       : COLORS.muted,
                   borderColor:
-                    newChannel.type === 'text'
+                    newChannel.type ===
+                    'text'
                       ? COLORS.gold
                       : COLORS.border
                 }}
               >
-                <MessageSquare size={16} />
+                <MessageSquare
+                  size={16}
+                />
                 Texte
               </button>
 
@@ -2941,15 +3342,18 @@ export default function CommunityTab({ onOpenProfile }) {
                 className="flex-1 py-3.5 rounded-[14px] font-black flex items-center justify-center gap-2 border-2"
                 style={{
                   background:
-                    newChannel.type === 'voice'
+                    newChannel.type ===
+                    'voice'
                       ? COLORS.teal
                       : COLORS.surface2,
                   color:
-                    newChannel.type === 'voice'
+                    newChannel.type ===
+                    'voice'
                       ? COLORS.bg
                       : COLORS.muted,
                   borderColor:
-                    newChannel.type === 'voice'
+                    newChannel.type ===
+                    'voice'
                       ? COLORS.teal
                       : COLORS.border
                 }}
@@ -2959,18 +3363,16 @@ export default function CommunityTab({ onOpenProfile }) {
               </button>
             </div>
 
-            {errorMessage && (
+            {actionError && (
               <div
-                className="mb-4 p-3 rounded-xl text-xs border"
+                className="mb-4 px-3 py-2.5 rounded-xl text-xs font-bold"
                 style={{
                   background:
-                    'rgba(239,68,68,0.08)',
-                  borderColor:
-                    'rgba(239,68,68,0.25)',
+                    'rgba(239,68,68,0.10)',
                   color: '#fca5a5'
                 }}
               >
-                {errorMessage}
+                {actionError}
               </div>
             )}
 
@@ -2979,11 +3381,10 @@ export default function CommunityTab({ onOpenProfile }) {
                 onClick={() =>
                   setShowCreateChannel(false)
                 }
-                disabled={actionLoading}
+                disabled={creatingChannel}
                 className="flex-1 py-4 rounded-[14px] font-black disabled:opacity-50"
                 style={{
-                  background:
-                    COLORS.surface2,
+                  background: COLORS.surface2,
                   color: COLORS.muted
                 }}
               >
@@ -2994,17 +3395,25 @@ export default function CommunityTab({ onOpenProfile }) {
                 onClick={handleCreateChannel}
                 disabled={
                   !newChannel.name.trim() ||
-                  actionLoading
+                  creatingChannel
                 }
-                className="flex-1 py-4 rounded-[14px] font-black disabled:opacity-50"
+                className="flex-1 py-4 rounded-[14px] font-black disabled:opacity-50 flex items-center justify-center gap-2"
                 style={{
                   background: COLORS.gold,
                   color: COLORS.bg
                 }}
               >
-                {actionLoading
-                  ? 'Création...'
-                  : 'Créer'}
+                {creatingChannel ? (
+                  <>
+                    <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                    Création...
+                  </>
+                ) : (
+                  <>
+                    <Plus size={16} />
+                    Créer
+                  </>
+                )}
               </button>
             </div>
           </div>
