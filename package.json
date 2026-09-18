@@ -13,6 +13,9 @@
     "cap:add:android": "npx cap add android",
     "cap:add:ios": "npx cap add ios",
     "cap:sync": "vite build && npx cap sync",
+    "cap:sync:android": "vite build && npx cap sync android",
+    "cap:sync:ios": "vite build && npx cap sync ios",
+    "cap:copy": "vite build && npx cap copy",
     "cap:android": "npx cap open android",
     "cap:ios": "npx cap open ios",
     "check:lock": "node scripts/check-lock.mjs",
@@ -20,27 +23,25 @@
     "check:notifications": "node scripts/check-notifications.mjs",
     "check:performance": "node scripts/check-performance.mjs",
     "check:android": "node scripts/check-android.mjs",
-    "cap:copy": "vite build && npx cap copy",
-    "cap:sync:android": "vite build && npx cap sync android",
     "check:payout": "node scripts/check-payout.mjs",
     "check:e2e": "node scripts/check-e2e-readiness.mjs",
-    "audit:security": "node scripts/security-audit-scan.mjs",
+    "check:e2e-smoke": "node scripts/check-e2e-smoke.mjs",
     "check:production": "node scripts/check-production.mjs",
-    "check:e2e-smoke": "node scripts/check-e2e-smoke.mjs"
+    "audit:security": "node scripts/security-audit-scan.mjs"
   },
   "dependencies": {
     "@capacitor/core": "^6.1.2",
     "@capacitor/push-notifications": "^6.0.5",
     "@daily-co/daily-js": "^0.91.0",
     "@supabase/supabase-js": "^2.45.0",
+    "i18next": "^23.16.0",
     "lucide-react": "^0.383.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-i18next": "^15.1.0",
     "react-router-dom": "^6.23.1",
     "recharts": "^2.12.7",
-    "stripe": "^17.4.0",
-    "i18next": "^23.16.0",
-    "react-i18next": "^15.1.0"
+    "stripe": "^17.4.0"
   },
   "devDependencies": {
     "@capacitor/android": "^6.1.2",
