@@ -7,9 +7,13 @@ import { AppProvider } from "./contexts/AppContext.jsx";
 import { ToastProvider } from "./components/ToastContext.jsx";
 import { ErrorBoundary } from "./components/ErrorBoundary.jsx";
 import { captureRefFromUrl } from "./lib/referralApi.js";
+import { initPerf } from "./lib/initPerf.js";
 import "./index.css";
 
 captureRefFromUrl();
+
+// Initialisation unique des optimisations/performance.
+initPerf();
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
@@ -26,7 +30,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
 );
 
 // VitePWA gère l'enregistrement du service worker en build.
-// Fallback uniquement si aucun SW n'est déjà contrôlé (dev / ancien déploiement).
+// Fallback uniquement si aucun SW n'est déjà contrôlé
+// (dev / ancien déploiement).
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     if (!navigator.serviceWorker.controller) {
