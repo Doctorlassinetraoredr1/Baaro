@@ -1,27 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { 
-  Search, 
-  MapPin, 
-  Store, 
-  Plus, 
-  Package, 
-  Edit3, 
-  Trash2, 
-  Loader2, 
-  AlertCircle,
-  Image as ImageIcon,
-  X
-} from "lucide-react";
+import { Search, MapPin, Store, Plus, Package, Edit3, Trash2, Loader2, AlertCircle, Eye, EyeOff, Tag } from "lucide-react";
 import { COLORS } from "../../theme.js";
 import { supabase } from "../../supabaseClient.js";
-import { fetchActiveShops, fetchShopProducts } from "../../services/shopApi.js";
+import { fetchActiveShops } from "../../services/shopApi.js";
 import ProductForm from "../../components/ProductForm.jsx";
 import { ConfirmDialog } from "../../components/ConfirmDialog.jsx";
 import { useToast } from "../../components/ToastContext.jsx";
 
-// ==========================================
-// 1. COMPOSANT LOCAL SHOP DIRECTORY (Annuaire)
-// ==========================================
 export function LocalShopDirectory({ onSelectShop }) {
   const { showToast } = useToast();
   const [shops, setShops] = useState([]);
@@ -32,131 +17,40 @@ export function LocalShopDirectory({ onSelectShop }) {
   const [category, setCategory] = useState("");
 
   const loadShops = useCallback(async () => {
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
-      const data = await fetchActiveShops({
-        query: search,
-        country: country || undefined,
-        category: category || undefined,
-      });
+      const data = await fetchActiveShops({ query: search, country: country || undefined, category: category || undefined });
       setShops(data || []);
-    } catch (e) {
-      console.error("Erreur chargement boutiques:", e);
-      setError(e.message || "Impossible de charger les boutiques.");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { setError(e.message || "Impossible de charger les boutiques."); } finally { setLoading(false); }
   }, [search, country, category]);
 
-  useEffect(() => {
-    loadShops();
-  }, [loadShops]);
+  useEffect(() => { loadShops(); }, [loadShops]);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <Loader2 className="animate-spin" size={32} style={{ color: COLORS.gold }} />
-        <p className="text-sm" style={{ color: COLORS.muted }}>Chargement des boutiques…</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-        <AlertCircle size={32} style={{ color: "#ef4444" }} />
-        <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
-        <button
-          onClick={loadShops}
-          className="px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95"
-          style={{ borderColor: COLORS.border, color: COLORS.ivory }}
-        >
-          Réessayer
-        </button>
-      </div>
-    );
-  }
+  if (loading) return <div className="flex flex-col items-center justify-center py-12 gap-3"><Loader2 className="animate-spin" size={32} style={{ color: COLORS.gold }} /><p className="text-sm" style={{ color: COLORS.muted }}>Chargement des boutiques…</p></div>;
+  if (error) return <div className="flex flex-col items-center justify-center py-12 gap-3 text-center"><AlertCircle size={32} style={{ color: "#ef4444" }} /><p className="text-sm" style={{ color: "#ef4444" }}>{error}</p><button onClick={loadShops} className="px-4 py-2 rounded-xl text-xs font-bold border transition-all active:scale-95" style={{ borderColor: COLORS.border, color: COLORS.ivory }}>Réessayer</button></div>;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Filtres */}
       <div className="flex flex-col gap-2">
         <div className="relative">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: COLORS.muted }} />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Rechercher une boutique..."
-            className="w-full pl-10 pr-3 py-2.5 rounded-xl border text-sm outline-none transition-colors focus:border-amber-400/50"
-            style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-          />
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher une boutique..." className="w-full pl-10 pr-3 py-2.5 rounded-xl border text-sm outline-none transition-colors focus:border-amber-400/50" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} />
         </div>
         <div className="flex gap-2">
-          <input
-            type="text"
-            value={country}
-            onChange={(e) => setCountry(e.target.value)}
-            placeholder="Pays (ex: ML, FR)"
-            className="flex-1 px-3 py-2 rounded-xl border text-xs outline-none transition-colors focus:border-amber-400/50"
-            style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-          />
-          <input
-            type="text"
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="Catégorie"
-            className="flex-1 px-3 py-2 rounded-xl border text-xs outline-none transition-colors focus:border-amber-400/50"
-            style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-          />
+          <input type="text" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Pays (ex: ML, FR)" className="flex-1 px-3 py-2 rounded-xl border text-xs outline-none transition-colors focus:border-amber-400/50" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} />
+          <input type="text" value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Catégorie" className="flex-1 px-3 py-2 rounded-xl border text-xs outline-none transition-colors focus:border-amber-400/50" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} />
         </div>
       </div>
-
-      {/* Liste des boutiques */}
       {shops.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-          <Store size={48} style={{ color: COLORS.muted, opacity: 0.3 }} />
-          <p className="text-sm font-semibold" style={{ color: COLORS.ivory }}>Aucune boutique trouvée</p>
-          <p className="text-xs" style={{ color: COLORS.muted }}>Essayez de modifier vos filtres.</p>
-        </div>
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-center"><Store size={48} style={{ color: COLORS.muted, opacity: 0.3 }} /><p className="text-sm font-semibold" style={{ color: COLORS.ivory }}>Aucune boutique trouvée</p></div>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {shops.map((shop) => (
-            <button
-              key={shop.id}
-              onClick={() => onSelectShop(shop)}
-              className="flex flex-col rounded-xl border p-4 text-left transition-all hover:border-amber-400/50 active:scale-[0.98]"
-              style={{ background: COLORS.surface, borderColor: COLORS.border }}
-            >
-              {shop.logo_url ? (
-                <img
-                  src={shop.logo_url}
-                  alt={shop.name}
-                  className="w-full h-32 rounded-lg object-cover mb-3 bg-gray-800"
-                />
-              ) : (
-                <div
-                  className="w-full h-32 rounded-lg flex items-center justify-center mb-3"
-                  style={{ background: COLORS.surface2 }}
-                >
-                  <Store size={32} style={{ color: COLORS.muted }} />
-                </div>
-              )}
-              <h3 className="font-bold text-sm mb-1 truncate" style={{ color: COLORS.ivory }}>
-                {shop.name}
-              </h3>
-              {shop.category && (
-                <p className="text-xs mb-1" style={{ color: COLORS.muted }}>
-                  {shop.category}
-                </p>
-              )}
-              {(shop.city || shop.country) && (
-                <div className="flex items-center gap-1 text-xs" style={{ color: COLORS.muted }}>
-                  <MapPin size={12} />
-                  <span>{[shop.city, shop.country].filter(Boolean).join(", ")}</span>
-                </div>
-              )}
+            <button key={shop.id} onClick={() => onSelectShop(shop)} className="flex flex-col rounded-xl border p-4 text-left transition-all hover:border-amber-400/50 active:scale-[0.98]" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
+              {shop.logo_url ? <img src={shop.logo_url} alt={shop.name} className="w-full h-32 rounded-lg object-cover mb-3 bg-gray-800" /> : <div className="w-full h-32 rounded-lg flex items-center justify-center mb-3" style={{ background: COLORS.surface2 }}><Store size={32} style={{ color: COLORS.muted }} /></div>}
+              <h3 className="font-bold text-sm mb-1 truncate" style={{ color: COLORS.ivory }}>{shop.name}</h3>
+              {shop.category && <p className="text-xs mb-1" style={{ color: COLORS.muted }}>{shop.category}</p>}
+              {(shop.city || shop.country) && <div className="flex items-center gap-1 text-xs" style={{ color: COLORS.muted }}><MapPin size={12} /><span>{[shop.city, shop.country].filter(Boolean).join(", ")}</span></div>}
             </button>
           ))}
         </div>
@@ -165,10 +59,7 @@ export function LocalShopDirectory({ onSelectShop }) {
   );
 }
 
-// ==========================================
-// 2. COMPOSANT SHOP PRODUCT MANAGER (Gestion produits)
-// ==========================================
-export function ShopProductManager({ shopId, shopCurrency }) {
+export function ShopProductManager({ shopId, shopCurrency, userId }) {
   const { showToast } = useToast();
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -176,278 +67,114 @@ export function ShopProductManager({ shopId, shopCurrency }) {
   const [showForm, setShowForm] = useState(false);
   const [editingProduct, setEditingProduct] = useState(null);
   const [pendingDeleteId, setPendingDeleteId] = useState(null);
-  const [formData, setFormData] = useState({
-    name: "",
-    description: "",
-    price: "",
-    image_url: "",
-    stock: "0",
-    is_available: true,
-  });
-  const [saving, setSaving] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const loadProducts = useCallback(async () => {
     if (!shopId) return;
-    setLoading(true);
-    setError("");
+    setLoading(true); setError("");
     try {
-      const data = await fetchShopProducts(shopId, { onlyAvailable: false });
+      const { data, error: fetchError } = await supabase.from("shop_products").select("*").eq("shop_id", shopId).order("created_at", { ascending: false });
+      if (fetchError) throw fetchError;
       setProducts(data || []);
-    } catch (e) {
-      console.error("Erreur chargement produits:", e);
-      setError(e.message || "Impossible de charger les produits.");
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { setError(e.message || "Impossible de charger les produits."); } finally { setLoading(false); }
   }, [shopId]);
 
-  useEffect(() => {
-    loadProducts();
-  }, [loadProducts]);
+  useEffect(() => { loadProducts(); }, [loadProducts]);
 
-  const openForm = (product = null) => {
-    if (product) {
-      setEditingProduct(product);
-      setFormData({
-        name: product.name || "",
-        description: product.description || "",
-        price: String(product.price || ""),
-        image_url: product.image_url || "",
-        stock: String(product.stock || 0),
-        is_available: product.is_available ?? true,
-      });
-    } else {
-      setEditingProduct(null);
-      setFormData({
-        name: "",
-        description: "",
-        price: "",
-        image_url: "",
-        stock: "0",
-        is_available: true,
-      });
-    }
-    setShowForm(true);
-  };
-
-  const closeForm = () => {
-    setShowForm(false);
-    setEditingProduct(null);
-    setFormData({
-      name: "",
-      description: "",
-      price: "",
-      image_url: "",
-      stock: "0",
-      is_available: true,
-    });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!formData.name.trim() || !formData.price) {
-      showToast("Nom et prix sont obligatoires", "error");
-      return;
-    }
-
-    setSaving(true);
-    try {
-      const payload = {
-        shop_id: shopId,
-        name: formData.name.trim(),
-        description: formData.description.trim() || null,
-        price: parseFloat(formData.price),
-        currency: shopCurrency || "XOF",
-        image_url: formData.image_url.trim() || null,
-        stock: parseInt(formData.stock) || 0,
-        is_available: formData.is_available,
-      };
-
-      if (editingProduct) {
-        const { error } = await supabase
-          .from("shop_items")
-          .update(payload)
-          .eq("id", editingProduct.id);
-        if (error) throw error;
-        showToast("Produit modifié", "success");
-      } else {
-        const { error } = await supabase.from("shop_items").insert(payload);
-        if (error) throw error;
-        showToast("Produit ajouté", "success");
-      }
-
-      closeForm();
-      await loadProducts();
-    } catch (e) {
-      console.error("Erreur sauvegarde produit:", e);
-      showToast(e.message || "Erreur lors de la sauvegarde", "error");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleDelete = (productId) => {
-    setPendingDeleteId(productId);
-  };
+  const openForm = (product = null) => { setEditingProduct(product); setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditingProduct(null); };
+  const handleSaved = () => { closeForm(); loadProducts(); };
 
   const confirmDelete = async () => {
     const productId = pendingDeleteId;
     if (!productId) return;
     setPendingDeleteId(null);
     try {
-      const { error } = await supabase.from("shop_items").delete().eq("id", productId);
+      const { error } = await supabase.from("shop_products").delete().eq("id", productId);
       if (error) throw error;
+      showToast("Produit supprimé", "success");
       await loadProducts();
-    } catch (e) {
-      console.error(e);
-      alert(e.message || "Suppression impossible");
-    }
+    } catch (e) { showToast(e.message || "Suppression impossible", "error"); }
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <Loader2 className="animate-spin" size={32} style={{ color: COLORS.gold }} />
-        <p className="text-sm" style={{ color: COLORS.muted }}>Chargement des produits…</p>
-      </div>
-    );
-  }
+  const toggleAvailability = async (product) => {
+    try {
+      const newAvailability = !product.is_available;
+      const { error } = await supabase.from("shop_products").update({ is_available: newAvailability }).eq("id", product.id);
+      if (error) throw error;
+      showToast(newAvailability ? "Produit disponible" : "Produit masqué", "success");
+      await loadProducts();
+    } catch (e) { showToast(e.message || "Erreur de mise à jour", "error"); }
+  };
+
+  const filteredProducts = products.filter((p) => p.name.toLowerCase().includes(searchQuery.toLowerCase()) || (p.sku && p.sku.toLowerCase().includes(searchQuery.toLowerCase())) || (p.category && p.category.toLowerCase().includes(searchQuery.toLowerCase())));
+
+  if (loading) return <div className="flex flex-col items-center justify-center py-12 gap-3"><Loader2 className="animate-spin" size={32} style={{ color: COLORS.gold }} /><p className="text-sm" style={{ color: COLORS.muted }}>Chargement des produits…</p></div>;
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <h3 className="font-bold text-sm" style={{ color: COLORS.ivory }}>
-          Mes produits ({products.length})
-        </h3>
-        <button
-          onClick={() => openForm()}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
-          style={{ background: COLORS.gold, color: COLORS.bg }}
-        >
-          <Plus size={14} />
-          Ajouter
-        </button>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <h3 className="font-bold text-sm flex items-center gap-2" style={{ color: COLORS.ivory }}><Package size={16} style={{ color: COLORS.gold }} /> Mes produits ({filteredProducts.length})</h3>
+        <div className="flex gap-2">
+          <div className="relative flex-1 sm:w-64">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: COLORS.muted }} />
+            <input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Rechercher (nom, SKU...)" className="w-full pl-9 pr-3 py-2 rounded-xl border text-xs outline-none" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} />
+          </div>
+          <button onClick={() => openForm()} className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95 whitespace-nowrap" style={{ background: COLORS.gold, color: COLORS.bg }}><Plus size={14} /> Ajouter</button>
+        </div>
       </div>
 
-      {error && (
-        <div className="rounded-xl border p-3 text-sm" style={{ background: "rgba(239, 68, 68, 0.1)", borderColor: "#ef4444", color: "#ef4444" }}>
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-xl border p-3 text-sm flex items-center gap-2" style={{ background: "rgba(239, 68, 68, 0.1)", borderColor: "#ef4444", color: "#ef4444" }}><AlertCircle size={16} /> {error}</div>}
 
-      {/* Liste des produits */}
-      {products.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 gap-3 text-center">
-          <Package size={48} style={{ color: COLORS.muted, opacity: 0.3 }} />
-          <p className="text-sm font-semibold" style={{ color: COLORS.ivory }}>Aucun produit</p>
-          <p className="text-xs" style={{ color: COLORS.muted }}>Ajoutez votre premier produit !</p>
-        </div>
+      {filteredProducts.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 gap-3 text-center"><Package size={48} style={{ color: COLORS.muted, opacity: 0.3 }} /><p className="text-sm font-semibold" style={{ color: COLORS.ivory }}>{searchQuery ? "Aucun produit ne correspond" : "Aucun produit"}</p></div>
       ) : (
-        <div className="grid gap-3">
-          {products.map((product) => (
-            <div
-              key={product.id}
-              className="flex items-center gap-3 rounded-xl border p-3"
-              style={{ background: COLORS.surface, borderColor: COLORS.border }}
-            >
-              {product.image_url ? (
-                <img
-                  src={product.image_url}
-                  alt={product.name}
-                  className="w-16 h-16 rounded-lg object-cover flex-shrink-0"
-                />
-              ) : (
-                <div
-                  className="w-16 h-16 rounded-lg flex items-center justify-center flex-shrink-0"
-                  style={{ background: COLORS.surface2 }}
-                >
-                  <ImageIcon size={20} style={{ color: COLORS.muted }} />
+        <div className="flex flex-col gap-3">
+          {filteredProducts.map((product) => {
+            const hasDiscount = product.compare_at_price && Number(product.compare_at_price) > Number(product.price);
+            const isLowStock = product.type === "produit" && product.stock !== null && product.stock <= (product.low_stock_threshold || 5) && product.stock > 0;
+            const isOutOfStock = product.type === "produit" && product.stock === 0;
+            return (
+              <div key={product.id} className="flex items-start gap-3 rounded-xl border p-3 transition-all" style={{ background: COLORS.surface, borderColor: COLORS.border, opacity: product.is_available ? 1 : 0.6 }}>
+                <div className="w-20 h-20 rounded-lg overflow-hidden shrink-0 relative" style={{ background: COLORS.surface2 }}>
+                  {(product.images?.[0] || product.image_url) ? <img src={product.images?.[0] || product.image_url} alt={product.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center"><Package size={20} style={{ color: COLORS.muted }} /></div>}
+                  {hasDiscount && <span className="absolute top-1 left-1 text-[8px] font-black px-1 py-0.5 rounded bg-red-500 text-white">-{Math.round((1 - Number(product.price) / Number(product.compare_at_price)) * 100)}%</span>}
                 </div>
-              )}
-              <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-sm truncate" style={{ color: COLORS.ivory }}>
-                  {product.name}
-                </h4>
-                <p className="text-xs mt-0.5" style={{ color: COLORS.muted }}>
-                  {product.description?.slice(0, 50)}{product.description?.length > 50 ? "..." : ""}
-                </p>
-                <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs font-bold" style={{ color: COLORS.gold }}>
-                    {Number(product.price).toFixed(2)} {product.currency}
-                  </span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: COLORS.surface2, color: COLORS.muted }}>
-                    Stock: {product.stock}
-                  </span>
-                  <span
-                    className="text-[10px] px-1.5 py-0.5 rounded"
-                    style={{
-                      background: product.is_available ? "rgba(45, 191, 166, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                      color: product.is_available ? COLORS.teal : "#ef4444",
-                    }}
-                  >
-                    {product.is_available ? "Disponible" : "Indisponible"}
-                  </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-start justify-between gap-2">
+                    <h4 className="font-bold text-sm truncate" style={{ color: COLORS.ivory }}>{product.name}</h4>
+                    {!product.is_available && <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-500/20 text-gray-400 font-bold shrink-0">MASQUÉ</span>}
+                  </div>
+                  {product.category && <p className="text-[10px] mt-0.5 flex items-center gap-1" style={{ color: COLORS.muted }}><Tag size={10} /> {product.category}{product.sku && <span className="ml-1 opacity-70">· SKU: {product.sku}</span>}</p>}
+                  <div className="flex items-baseline gap-2 mt-1">
+                    <span className="text-sm font-black" style={{ color: COLORS.gold }}>{Number(product.price).toLocaleString()} {product.currency}</span>
+                    {hasDiscount && <span className="text-xs line-through" style={{ color: COLORS.muted }}>{Number(product.compare_at_price).toLocaleString()}</span>}
+                  </div>
+                  {product.type === "produit" && (
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold ${isOutOfStock ? "bg-red-500/20 text-red-400" : isLowStock ? "bg-amber-500/20 text-amber-400" : "bg-teal-500/20 text-teal-400"}`}>{isOutOfStock ? "Rupture" : isLowStock ? `Stock faible: ${product.stock}` : `Stock: ${product.stock}`}</span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col gap-1 shrink-0">
+                  <button onClick={() => toggleAvailability(product)} className="p-2 rounded-lg transition-colors hover:bg-white/5" style={{ color: product.is_available ? COLORS.teal : COLORS.muted }} title={product.is_available ? "Masquer" : "Rendre disponible"}>{product.is_available ? <Eye size={16} /> : <EyeOff size={16} />}</button>
+                  <button onClick={() => openForm(product)} className="p-2 rounded-lg transition-colors hover:bg-white/5" style={{ color: COLORS.gold }} title="Modifier"><Edit3 size={16} /></button>
+                  <button onClick={() => setPendingDeleteId(product.id)} className="p-2 rounded-lg transition-colors hover:bg-red-500/10" style={{ color: "#ef4444" }} title="Supprimer"><Trash2 size={16} /></button>
                 </div>
               </div>
-              <div className="flex flex-col gap-1">
-                <button
-                  onClick={() => openForm(product)}
-                  className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
-                  style={{ color: COLORS.gold }}
-                  aria-label="Modifier"
-                >
-                  <Edit3 size={14} />
-                </button>
-                <button
-                  onClick={() => handleDelete(product.id)}
-                  className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
-                  style={{ color: "#ef4444" }}
-                  aria-label="Supprimer"
-                >
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* Formulaire modal */}
-      {pendingDeleteId && (
-        <ConfirmDialog
-          open={Boolean(pendingDeleteId)}
-          title="Supprimer ce produit ?"
-          message="Cette action est définitive."
-          confirmLabel="Supprimer"
-          cancelLabel="Annuler"
-          onConfirm={confirmDelete}
-          onCancel={() => setPendingDeleteId(null)}
-        />
-      )}
+      <ConfirmDialog open={Boolean(pendingDeleteId)} title="Supprimer ce produit ?" message="Cette action est définitive." confirmLabel="Supprimer" cancelLabel="Annuler" onConfirm={confirmDelete} onCancel={() => setPendingDeleteId(null)} />
       {showForm && (
-        <div
-          className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4"
-          onClick={closeForm}
-        >
-          <div
-            className="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border shadow-2xl p-4"
-            style={{ background: COLORS.surface, borderColor: COLORS.borderGold }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <ProductForm
-              shopId={shopId}
-              shopCurrency={shopCurrency}
-              product={editingProduct}
-              onSaved={() => {
-                closeForm();
-                loadProducts();
-              }}
-              onCancel={closeForm}
-            />
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4" onClick={closeForm}>
+          <div className="w-full sm:max-w-lg max-h-[90vh] overflow-y-auto rounded-t-3xl sm:rounded-2xl border shadow-2xl p-4 sm:p-6" style={{ background: COLORS.surface, borderColor: COLORS.borderGold }} onClick={(e) => e.stopPropagation()}>
+            <ProductForm shopId={shopId} shopCurrency={shopCurrency} userId={userId} product={editingProduct} onSaved={handleSaved} onCancel={closeForm} />
           </div>
         </div>
       )}
     </div>
   );
-}
+                                                                                           }
