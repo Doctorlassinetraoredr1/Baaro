@@ -30,6 +30,7 @@
     "audit:security": "node scripts/security-audit-scan.mjs"
   },
   "dependencies": {
+    "@capacitor-community/contacts": "^6.0.0",
     "@capacitor/core": "^6.1.2",
     "@capacitor/push-notifications": "^6.0.5",
     "@daily-co/daily-js": "^0.91.0",
