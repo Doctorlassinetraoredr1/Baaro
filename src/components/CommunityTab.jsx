@@ -21,7 +21,7 @@ const getCategoryConfig = (catId) => {
   return CATEGORIES.find(c => c.id === catId) || CATEGORIES[0];
 };
 
-// Icônes attractives pour les salons au lieu de #
+// Icônes attractives pour les canaux au lieu de #
 const getChannelIcon = (channel) => {
   const name = (channel.name || '').toLowerCase();
   if (channel.type === 'voice') return Volume2;
@@ -186,9 +186,9 @@ export default function CommunityTab({ onOpenProfile }) {
           <button onClick={()=>setShowCreateGroup(true)} className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: COLORS.gold, color: COLORS.bg }}><Plus size={18} /></button>
         </div>
 
-        {/* TABS SIMPLIFIÉS - Plus de doublon découvrir */}
-        <div className="flex gap-1 p-2 border-b shrink-0" style={{ borderColor: COLORS.border }}>
-          {[{id:'groups', label:'Salons', icon: MessageCircle},{id:'friends', label:'Amis', icon: Heart}].map(tab => {
+        {/* TABS SIMPLIFIÉS - visible desktop uniquement, la nav mobile du bas gère déjà "Amis" */}
+        <div className="hidden md:flex gap-1 p-2 border-b shrink-0" style={{ borderColor: COLORS.border }}>
+          {[{id:'groups', label:'Canaux', icon: MessageCircle},{id:'friends', label:'Amis', icon: Heart}].map(tab => {
             const Icon = tab.icon; const active = activeTab===tab.id && mobileView!=='discover';
             return <button key={tab.id} onClick={()=>{ setActiveTab(tab.id); setMobileView(tab.id); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[12px] text-[11px] font-black uppercase tracking-wider ${active ? 'shadow-md' : ''}`} style={{ background: active ? COLORS.gold : 'transparent', color: active ? COLORS.bg : COLORS.muted }}><Icon size={14} /> {tab.label}</button>;
           })}
@@ -239,7 +239,7 @@ export default function CommunityTab({ onOpenProfile }) {
                   <>
                     <div>
                       <div className="flex items-center justify-between px-1 mb-2">
-                        <p className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5" style={{ color: COLORS.muted }}><MessageSquare size={12} /> Salons Texte — {textChannels.length}</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5" style={{ color: COLORS.muted }}><MessageSquare size={12} /> Canaux Texte — {textChannels.length}</p>
                         {isAdmin && <button onClick={()=>setShowCreateChannel(true)} className="p-1.5 rounded-lg hover:bg-white/10 transition-colors" style={{ color: COLORS.muted }}><Plus size={14} /></button>}
                       </div>
                       <div className="space-y-1">
@@ -325,7 +325,7 @@ export default function CommunityTab({ onOpenProfile }) {
         {!selectedChannel ? (
           <div className="flex-1 flex flex-col items-center justify-center p-8 text-center" style={{ color: COLORS.muted }}>
             <div className="w-24 h-24 rounded-[28px] flex items-center justify-center mb-6" style={{ background: COLORS.surface2 }}><MessageCircle size={36} className="opacity-20" /></div>
-            <h3 className="font-black text-[20px] mb-2" style={{ color: COLORS.ivory }}>Bienvenue</h3><p className="text-[14px] max-w-[320px]">Sélectionne un salon pour discuter.</p>
+            <h3 className="font-black text-[20px] mb-2" style={{ color: COLORS.ivory }}>Bienvenue</h3><p className="text-[14px] max-w-[320px]">Sélectionne un canal pour discuter.</p>
             <button onClick={()=>setMobileView('groups')} className="md:hidden mt-6 px-6 py-3 rounded-full font-black text-[13px]" style={{ background: COLORS.gold, color: COLORS.bg }}>Voir les groupes</button>
           </div>
         ) : selectedChannel.type==='voice' ? (
@@ -358,7 +358,7 @@ export default function CommunityTab({ onOpenProfile }) {
 
       {/* MOBILE BOTTOM - Plus de doublon, 4 items seulement */}
       <div className="flex md:hidden h-[72px] border-t items-center justify-around px-1 pb-[env(safe-area-inset-bottom)] shrink-0" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
-        {[{id:'groups', icon: Home, label: 'Groupes'},{id:'channels', icon: MessageCircle, label: 'Salons'},{id:'discover', icon: Compass, label: 'Découvrir'},{id:'friends', icon: Users, label: 'Amis'}].map(tab => { const Icon = tab.icon; const active = mobileView===tab.id || (tab.id==='groups' && activeTab==='groups' && mobileView!=='discover' && mobileView!=='friends'); return <button key={tab.id} onClick={()=>{ if(tab.id==='groups'){ setActiveTab('groups'); setMobileView('groups'); } else { setActiveTab(tab.id); setMobileView(tab.id); } }} className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-[16px]"><div className={`w-9 h-9 rounded-[12px] flex items-center justify-center transition-all ${active ? 'shadow-lg scale-105' : ''}`} style={{ background: active ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : 'transparent', color: active ? COLORS.bg : COLORS.muted }}><Icon size={20} /></div><span className="text-[10px] font-black" style={{ color: active ? COLORS.gold : COLORS.muted }}>{tab.label}</span></button>; })}
+        {[{id:'groups', icon: Home, label: 'Groupes'},{id:'channels', icon: MessageCircle, label: 'Canaux'},{id:'discover', icon: Compass, label: 'Découvrir'},{id:'friends', icon: Users, label: 'Amis'}].map(tab => { const Icon = tab.icon; const active = mobileView===tab.id || (tab.id==='groups' && activeTab==='groups' && mobileView!=='discover' && mobileView!=='friends'); return <button key={tab.id} onClick={()=>{ if(tab.id==='groups'){ setActiveTab('groups'); setMobileView('groups'); } else { setActiveTab(tab.id); setMobileView(tab.id); } }} className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-[16px]"><div className={`w-9 h-9 rounded-[12px] flex items-center justify-center transition-all ${active ? 'shadow-lg scale-105' : ''}`} style={{ background: active ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : 'transparent', color: active ? COLORS.bg : COLORS.muted }}><Icon size={20} /></div><span className="text-[10px] font-black" style={{ color: active ? COLORS.gold : COLORS.muted }}>{tab.label}</span></button>; })}
       </div>
 
       {showCreateGroup && (
@@ -376,8 +376,8 @@ export default function CommunityTab({ onOpenProfile }) {
       {showCreateChannel && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-xl flex items-end md:items-center justify-center z-[100] p-0 md:p-4" onClick={()=>setShowCreateChannel(false)}>
           <div className="w-full md:max-w-[400px] rounded-t-[32px] md:rounded-[24px] border-2 shadow-2xl p-7" style={{ background: COLORS.surface, borderColor: COLORS.border }} onClick={e=>e.stopPropagation()}>
-            <h3 className="font-black text-[18px] mb-6" style={{ color: COLORS.ivory }}>Nouveau salon dans {selectedGroup?.name}</h3>
-            <input value={newChannel.name} onChange={e=>setNewChannel({...newChannel, name: e.target.value})} placeholder="nom-du-salon" className="w-full p-4 rounded-[14px] mb-3 text-[15px] font-bold outline-none border-2" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} autoFocus />
+            <h3 className="font-black text-[18px] mb-6" style={{ color: COLORS.ivory }}>Nouveau canal dans {selectedGroup?.name}</h3>
+            <input value={newChannel.name} onChange={e=>setNewChannel({...newChannel, name: e.target.value})} placeholder="nom-du-canal" className="w-full p-4 rounded-[14px] mb-3 text-[15px] font-bold outline-none border-2" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} autoFocus />
             <div className="flex gap-3 mb-6">
               <button onClick={()=>setNewChannel({...newChannel, type:'text'})} className="flex-1 py-3.5 rounded-[14px] font-black flex items-center justify-center gap-2 border-2" style={{ background: newChannel.type==='text'?COLORS.gold:COLORS.surface2, color: newChannel.type==='text'?COLORS.bg:COLORS.muted, borderColor: newChannel.type==='text'?COLORS.gold:COLORS.border }}><MessageSquare size={16} /> Texte</button>
               <button onClick={()=>setNewChannel({...newChannel, type:'voice'})} className="flex-1 py-3.5 rounded-[14px] font-black flex items-center justify-center gap-2 border-2" style={{ background: newChannel.type==='voice'?COLORS.teal:COLORS.surface2, color: newChannel.type==='voice'?COLORS.bg:COLORS.muted, borderColor: newChannel.type==='voice'?COLORS.teal:COLORS.border }}><Volume2 size={16} /> Vocal</button>
