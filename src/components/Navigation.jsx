@@ -31,7 +31,6 @@ const MORE_ITEMS = [
   { id: "discover", label: "Découvrir", icon: Compass, badge: null },
   { id: "companies", label: "Entreprises", icon: Building2, badge: null },
   { id: "community", label: "Communauté", icon: Users, badge: null },
-  { id: "friends", label: "Amis", icon: Users, badge: null },
   { id: "crypto", label: "BARO", icon: Coins, badge: "PRO" },
   { id: "wallet", label: "Portefeuille", icon: Wallet, badge: null },
   { id: "offline", label: "Hors-ligne", icon: WifiOff, badge: "P2P" },
@@ -182,3 +181,4 @@ export function Navigation({ activeTab, setActiveTab }) {
     </>
   );
 }
+
