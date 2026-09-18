@@ -1,5 +1,11 @@
 /**
- * Point d'entrée unique pour le client Supabase.
- * Ré-exporte tout supabaseClient (y compris searchProfiles si présent).
+ * Point d'entrée officiel pour les services Supabase de BAARO.
+ *
+ * L'implémentation historique reste dans :
+ * ../supabaseClient.js
+ *
+ * afin de conserver la compatibilité avec les imports
+ * existants pendant la migration progressive.
  */
+
 export * from "../supabaseClient.js";
