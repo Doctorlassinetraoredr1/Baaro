@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   Hash, Mic, Send, Plus, Users, Search, Lock,
-  Crown, Pin, Settings, Volume2, Compass, Sparkles, Globe, Flame, Smile, FileText, X, ArrowLeft, Home, MessageCircle, Heart, Bell, Zap, Coffee, Gamepad2, Briefcase, Code2, BookOpen, Music, MessageSquare
+  Crown, Pin, Settings, Volume2, Compass, Sparkles, Globe, Flame, Smile, FileText, X, ArrowLeft, Home, MessageCircle, Heart, Bell, Zap, Coffee, Gamepad2, Briefcase, Code2, BookOpen, Music, MessageSquare, Phone
 } from 'lucide-react';
 import { useCommunity, useChannelMessages, useVoiceChannel, useCurrentUser } from '../hooks/useCommunity';
 import FollowButton from '../features/friends/FollowButton.jsx';
 import { FriendsTab, FriendRequests } from '../features/friends/index.js';
+import ContactsTab from '../features/contacts/ContactsTab.jsx';
 import { COLORS } from '../theme.js';
 
 const CATEGORIES = [
@@ -181,21 +182,21 @@ export default function CommunityTab({ onOpenProfile }) {
           <div className="flex items-center gap-3 min-w-0">
             {mobileView!=='groups' && <button onClick={()=>setMobileView('groups')} className="md:hidden p-2 -ml-2 rounded-xl hover:bg-white/10" style={{ color: COLORS.ivory }}><ArrowLeft size={20} /></button>}
             <div className="w-9 h-9 rounded-[12px] flex items-center justify-center font-black text-[16px] shrink-0" style={{ background: selectedGroup ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : COLORS.surface2, color: selectedGroup ? COLORS.bg : COLORS.muted }}>{selectedGroup ? (selectedGroup.avatar_url ? <img src={selectedGroup.avatar_url} className="w-full h-full rounded-[12px] object-cover" alt="" /> : selectedGroup.name[0]?.toUpperCase()) : <Home size={18} />}</div>
-            <div className="min-w-0"><h2 className="font-black text-[15px] truncate tracking-tight" style={{ color: COLORS.ivory }}>{activeTab==='discover' ? 'Découvrir' : activeTab==='friends' ? 'Amis' : selectedGroup?.name || 'Communautés'}</h2><p className="text-[11px] truncate flex items-center gap-1" style={{ color: COLORS.muted }}>{selectedGroup ? <><Users size={10} /> {selectedGroup.members?.length||0} membres</> : `${groups.length} groupes`}</p></div>
+            <div className="min-w-0"><h2 className="font-black text-[15px] truncate tracking-tight" style={{ color: COLORS.ivory }}>{activeTab==='discover' ? 'Découvrir' : activeTab==='friends' ? 'Amis' : activeTab==='contacts' ? 'Contacts' : selectedGroup?.name || 'Communautés'}</h2><p className="text-[11px] truncate flex items-center gap-1" style={{ color: COLORS.muted }}>{selectedGroup ? <><Users size={10} /> {selectedGroup.members?.length||0} membres</> : `${groups.length} groupes`}</p></div>
           </div>
           <button onClick={()=>setShowCreateGroup(true)} className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: COLORS.gold, color: COLORS.bg }}><Plus size={18} /></button>
         </div>
 
         {/* TABS SIMPLIFIÉS - visible desktop uniquement, la nav mobile du bas gère déjà "Amis" */}
         <div className="hidden md:flex gap-1 p-2 border-b shrink-0" style={{ borderColor: COLORS.border }}>
-          {[{id:'groups', label:'Canaux', icon: MessageCircle},{id:'friends', label:'Amis', icon: Heart}].map(tab => {
+          {[{id:'groups', label:'Canaux', icon: MessageCircle},{id:'friends', label:'Amis', icon: Heart},{id:'contacts', label:'Contacts', icon: Phone}].map(tab => {
             const Icon = tab.icon; const active = activeTab===tab.id && mobileView!=='discover';
             return <button key={tab.id} onClick={()=>{ setActiveTab(tab.id); setMobileView(tab.id); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[12px] text-[11px] font-black uppercase tracking-wider ${active ? 'shadow-md' : ''}`} style={{ background: active ? COLORS.gold : 'transparent', color: active ? COLORS.bg : COLORS.muted }}><Icon size={14} /> {tab.label}</button>;
           })}
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {(mobileView==='groups' || mobileView==='channels' || activeTab==='groups') && activeTab!=='discover' && activeTab!=='friends' && (
+          {(mobileView==='groups' || mobileView==='channels' || activeTab==='groups') && activeTab!=='discover' && activeTab!=='friends' && activeTab!=='contacts' && (
             <div className="p-3 space-y-5">
               <div className={`${mobileView==='channels' ? 'hidden md:block' : 'block'} space-y-3`}>
                 <div className="relative"><Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color: COLORS.muted }} /><input value={groupSearch} onChange={e=>setGroupSearch(e.target.value)} placeholder="Filtrer les groupes..." className="w-full pl-10 pr-3 py-3 rounded-[14px] text-[14px] font-medium outline-none border focus:border-amber-400/50" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} /></div>
@@ -318,6 +319,7 @@ export default function CommunityTab({ onOpenProfile }) {
             </div>
           )}
           {(mobileView==='friends' || activeTab==='friends') && (<div className="p-3 space-y-4"><FriendRequests onOpenProfile={onOpenProfile} /><div className="h-[1px]" style={{ background: COLORS.border }} /><FriendsTab onOpenProfile={onOpenProfile} /></div>)}
+          {(mobileView==='contacts' || activeTab==='contacts') && (<ContactsTab onOpenProfile={onOpenProfile} />)}
         </div>
       </div>
 
@@ -356,9 +358,9 @@ export default function CommunityTab({ onOpenProfile }) {
         )}
       </div>
 
-      {/* MOBILE BOTTOM - Plus de doublon, 4 items seulement */}
+      {/* MOBILE BOTTOM */}
       <div className="flex md:hidden h-[72px] border-t items-center justify-around px-1 pb-[env(safe-area-inset-bottom)] shrink-0" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
-        {[{id:'groups', icon: Home, label: 'Groupes'},{id:'channels', icon: MessageCircle, label: 'Canaux'},{id:'discover', icon: Compass, label: 'Découvrir'},{id:'friends', icon: Users, label: 'Amis'}].map(tab => { const Icon = tab.icon; const active = mobileView===tab.id || (tab.id==='groups' && activeTab==='groups' && mobileView!=='discover' && mobileView!=='friends'); return <button key={tab.id} onClick={()=>{ if(tab.id==='groups'){ setActiveTab('groups'); setMobileView('groups'); } else { setActiveTab(tab.id); setMobileView(tab.id); } }} className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-[16px]"><div className={`w-9 h-9 rounded-[12px] flex items-center justify-center transition-all ${active ? 'shadow-lg scale-105' : ''}`} style={{ background: active ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : 'transparent', color: active ? COLORS.bg : COLORS.muted }}><Icon size={20} /></div><span className="text-[10px] font-black" style={{ color: active ? COLORS.gold : COLORS.muted }}>{tab.label}</span></button>; })}
+        {[{id:'groups', icon: Home, label: 'Groupes'},{id:'channels', icon: MessageCircle, label: 'Canaux'},{id:'discover', icon: Compass, label: 'Découvrir'},{id:'friends', icon: Users, label: 'Amis'},{id:'contacts', icon: Phone, label: 'Contacts'}].map(tab => { const Icon = tab.icon; const active = mobileView===tab.id || (tab.id==='groups' && activeTab==='groups' && mobileView!=='discover' && mobileView!=='friends' && mobileView!=='contacts'); return <button key={tab.id} onClick={()=>{ if(tab.id==='groups'){ setActiveTab('groups'); setMobileView('groups'); } else { setActiveTab(tab.id); setMobileView(tab.id); } }} className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-[16px]"><div className={`w-9 h-9 rounded-[12px] flex items-center justify-center transition-all ${active ? 'shadow-lg scale-105' : ''}`} style={{ background: active ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : 'transparent', color: active ? COLORS.bg : COLORS.muted }}><Icon size={20} /></div><span className="text-[10px] font-black" style={{ color: active ? COLORS.gold : COLORS.muted }}>{tab.label}</span></button>; })}
       </div>
 
       {showCreateGroup && (
