@@ -22,7 +22,6 @@ const getCategoryConfig = (catId) => {
   return CATEGORIES.find(c => c.id === catId) || CATEGORIES[0];
 };
 
-// Icônes attractives pour les canaux au lieu de #
 const getChannelIcon = (channel) => {
   const name = (channel.name || '').toLowerCase();
   if (channel.type === 'voice') return Volume2;
@@ -46,22 +45,6 @@ const getChannelColor = (channel, isActive) => {
   if (name.includes('tech')) return 'rgba(16,185,129,0.15)';
   return COLORS.surface2;
 };
-
-const getGroupIcon = (group) => {
-  const cat = getCategoryConfig(group.category);
-  return cat.icon;
-};
-
-const getGroupGradient = (group) => {
-  const cat = getCategoryConfig(group.category);
-  return cat.gradient;
-};
-
-const getGroupBg = (group) => {
-  const cat = getCategoryConfig(group.category);
-  return cat.bg;
-};
-
 
 export default function CommunityTab({ onOpenProfile }) {
   const { id } = useCurrentUser();
@@ -92,20 +75,8 @@ export default function CommunityTab({ onOpenProfile }) {
   useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
   useEffect(() => { if (search.trim().length >= 2) loadUsers?.(search.trim()); }, [search]);
 
-  // Filtres internationaux optionnels - pas de Bamako forcé
   const [selectedCountry, setSelectedCountry] = useState('all');
   const [selectedLanguage, setSelectedLanguage] = useState('all');
-
-  // Extraire pays et langues uniques depuis les profils (international)
-  const availableCountries = useMemo(() => {
-    const countries = [...new Set(allUsers.map(u => u.country).filter(Boolean))].sort();
-    return countries.slice(0, 20); // limiter pour UI
-  }, [allUsers]);
-
-  const availableLanguages = useMemo(() => {
-    const langs = [...new Set(allUsers.map(u => u.language).filter(Boolean))].sort();
-    return langs.length ? langs : ['fr', 'en', 'ar', 'es']; // fallback international
-  }, [allUsers]);
 
   const filteredGroups = useMemo(() => groups.filter(g => {
     const ms = !groupSearch || g.name.toLowerCase().includes(groupSearch.toLowerCase()) || (g.description||'').toLowerCase().includes(groupSearch.toLowerCase());
@@ -134,15 +105,17 @@ export default function CommunityTab({ onOpenProfile }) {
 
   const handleSelectGroup = (g) => { setSelectedGroup(g); setSelectedChannel(g.channels?.[0] || null); setActiveTab('groups'); setMobileView('channels'); };
   const handleSelectChannel = (ch) => { setSelectedChannel(ch); setMobileView('chat'); };
+  
   const handleCreateGroup = async () => {
     if (!newGroup.name.trim()) return;
     try {
-      const payload = { name: newGroup.name.trim(), description: newGroup.description?.trim() || null, is_public: !!newGroup.is_public, category: newGroup.category || 'bamako', type: 'community' };
+      const payload = { name: newGroup.name.trim(), description: newGroup.description?.trim() || null, is_public: !!newGroup.is_public, category: newGroup.category || 'community', type: 'community' };
       const g = await createGroup(payload);
       setShowCreateGroup(false); setNewGroup({ name: '', description: '', is_public: true, category: 'community', type: 'community' });
       if (g) { setSelectedGroup(g); setSelectedChannel(g.channels?.[0] || null); setMobileView('channels'); }
     } catch (e) { alert('Erreur: ' + (e.message||'')); }
   };
+
   const handleCreateChannel = async () => {
     if (!newChannel.name.trim() || !selectedGroup) return;
     try {
@@ -151,18 +124,26 @@ export default function CommunityTab({ onOpenProfile }) {
       if (ch) { setSelectedChannel(ch); setMobileView('chat'); }
     } catch (e) { alert('Erreur: ' + (e.message||'')); }
   };
+
   const handleSendMessage = () => { if (!msgText.trim()) return; sendMessage(msgText); setMsgText(''); };
 
-  if (loading) return <div className="flex h-[100dvh] items-center justify-center" style={{ background: COLORS.bg }}><div className="flex flex-col items-center gap-3"><div className="w-14 h-14 rounded-[18px] animate-pulse" style={{ background: `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` }} /><p className="text-xs font-bold tracking-widest uppercase" style={{ color: COLORS.muted }}>Communauté</p></div></div>;
+  if (loading) return (
+    <div className="flex h-[100dvh] items-center justify-center" style={{ background: COLORS.bg }}>
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-14 h-14 rounded-[18px] animate-pulse" style={{ background: `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` }} />
+        <p className="text-xs font-bold tracking-widest uppercase" style={{ color: COLORS.muted }}>Communauté</p>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col md:flex-row h-[100dvh] md:h-[calc(100vh-70px)] w-full overflow-hidden select-none" style={{ background: COLORS.bg, color: COLORS.ivory }}>
-      {/* RAIL DESKTOP - Plus de doublon découvrir */}
+      {/* RAIL DESKTOP */}
       <div className="hidden md:flex w-[80px] flex-col items-center py-4 gap-3 border-r shrink-0 overflow-y-auto scrollbar-none" style={{ background: `linear-gradient(180deg, ${COLORS.surface} 0%, #0f0f0f 100%)`, borderColor: COLORS.border }}>
         <button onClick={()=>{ setActiveTab('discover'); setMobileView('discover'); }} className={`w-[52px] h-[52px] rounded-[18px] flex items-center justify-center transition-all duration-300 hover:rounded-[14px] hover:scale-105 ${activeTab==='discover' ? 'rounded-[14px] scale-105 shadow-lg shadow-amber-500/20' : ''}`} style={{ background: activeTab==='discover' ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : COLORS.surface2, color: activeTab==='discover' ? COLORS.bg : COLORS.teal }}><Compass size={24} /></button>
         <div className="w-8 h-[3px] rounded-full opacity-30 my-1" style={{ background: COLORS.border }} />
         {groups.slice(0,15).map(g => {
-          const sel = selectedGroup?.id === g.id && activeTab !== 'discover' && activeTab !== 'friends';
+          const sel = selectedGroup?.id === g.id && activeTab !== 'discover' && activeTab !== 'friends' && activeTab !== 'contacts';
           return (
             <div key={g.id} className="relative group/rail">
               {sel && <div className="absolute -left-4 top-1/2 -translate-y-1/2 w-[4px] h-8 rounded-r-full" style={{ background: COLORS.gold }} />}
@@ -182,16 +163,37 @@ export default function CommunityTab({ onOpenProfile }) {
           <div className="flex items-center gap-3 min-w-0">
             {mobileView!=='groups' && <button onClick={()=>setMobileView('groups')} className="md:hidden p-2 -ml-2 rounded-xl hover:bg-white/10" style={{ color: COLORS.ivory }}><ArrowLeft size={20} /></button>}
             <div className="w-9 h-9 rounded-[12px] flex items-center justify-center font-black text-[16px] shrink-0" style={{ background: selectedGroup ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : COLORS.surface2, color: selectedGroup ? COLORS.bg : COLORS.muted }}>{selectedGroup ? (selectedGroup.avatar_url ? <img src={selectedGroup.avatar_url} className="w-full h-full rounded-[12px] object-cover" alt="" /> : selectedGroup.name[0]?.toUpperCase()) : <Home size={18} />}</div>
-            <div className="min-w-0"><h2 className="font-black text-[15px] truncate tracking-tight" style={{ color: COLORS.ivory }}>{activeTab==='discover' ? 'Découvrir' : activeTab==='friends' ? 'Amis' : activeTab==='contacts' ? 'Contacts' : selectedGroup?.name || 'Communautés'}</h2><p className="text-[11px] truncate flex items-center gap-1" style={{ color: COLORS.muted }}>{selectedGroup ? <><Users size={10} /> {selectedGroup.members?.length||0} membres</> : `${groups.length} groupes`}</p></div>
+            <div className="min-w-0">
+              <h2 className="font-black text-[15px] truncate tracking-tight" style={{ color: COLORS.ivory }}>
+                {activeTab==='discover' ? 'Découvrir' : activeTab==='friends' ? 'Amis' : activeTab==='contacts' ? 'Contacts' : selectedGroup?.name || 'Communautés'}
+              </h2>
+              <p className="text-[11px] truncate flex items-center gap-1" style={{ color: COLORS.muted }}>
+                {selectedGroup ? <><Users size={10} /> {selectedGroup.members?.length||0} membres</> : `${groups.length} groupes`}
+              </p>
+            </div>
           </div>
           <button onClick={()=>setShowCreateGroup(true)} className="md:hidden w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: COLORS.gold, color: COLORS.bg }}><Plus size={18} /></button>
         </div>
 
-        {/* TABS SIMPLIFIÉS - visible desktop uniquement, la nav mobile du bas gère déjà "Amis" */}
+        {/* TABS DESKTOP */}
         <div className="hidden md:flex gap-1 p-2 border-b shrink-0" style={{ borderColor: COLORS.border }}>
-          {[{id:'groups', label:'Canaux', icon: MessageCircle},{id:'friends', label:'Amis', icon: Heart},{id:'contacts', label:'Contacts', icon: Phone}].map(tab => {
-            const Icon = tab.icon; const active = activeTab===tab.id && mobileView!=='discover';
-            return <button key={tab.id} onClick={()=>{ setActiveTab(tab.id); setMobileView(tab.id); }} className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[12px] text-[11px] font-black uppercase tracking-wider ${active ? 'shadow-md' : ''}`} style={{ background: active ? COLORS.gold : 'transparent', color: active ? COLORS.bg : COLORS.muted }}><Icon size={14} /> {tab.label}</button>;
+          {[
+            { id: 'groups', label: 'Canaux', icon: MessageCircle },
+            { id: 'friends', label: 'Amis', icon: Heart },
+            { id: 'contacts', label: 'Contacts', icon: Phone }
+          ].map(tab => {
+            const Icon = tab.icon; 
+            const active = activeTab === tab.id && mobileView !== 'discover';
+            return (
+              <button 
+                key={tab.id} 
+                onClick={() => { setActiveTab(tab.id); setMobileView(tab.id); }} 
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-[12px] text-[11px] font-black uppercase tracking-wider ${active ? 'shadow-md' : ''}`} 
+                style={{ background: active ? COLORS.gold : 'transparent', color: active ? COLORS.bg : COLORS.muted }}
+              >
+                <Icon size={14} /> {tab.label}
+              </button>
+            );
           })}
         </div>
 
@@ -358,9 +360,35 @@ export default function CommunityTab({ onOpenProfile }) {
         )}
       </div>
 
-      {/* MOBILE BOTTOM */}
-      <div className="flex md:hidden h-[72px] border-t items-center justify-around px-1 pb-[env(safe-area-inset-bottom)] shrink-0" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
-        {[{id:'groups', icon: Home, label: 'Groupes'},{id:'channels', icon: MessageCircle, label: 'Canaux'},{id:'discover', icon: Compass, label: 'Découvrir'},{id:'friends', icon: Users, label: 'Amis'},{id:'contacts', icon: Phone, label: 'Contacts'}].map(tab => { const Icon = tab.icon; const active = mobileView===tab.id || (tab.id==='groups' && activeTab==='groups' && mobileView!=='discover' && mobileView!=='friends' && mobileView!=='contacts'); return <button key={tab.id} onClick={()=>{ if(tab.id==='groups'){ setActiveTab('groups'); setMobileView('groups'); } else { setActiveTab(tab.id); setMobileView(tab.id); } }} className="flex flex-col items-center justify-center gap-1 py-2 px-3 rounded-[16px]"><div className={`w-9 h-9 rounded-[12px] flex items-center justify-center transition-all ${active ? 'shadow-lg scale-105' : ''}`} style={{ background: active ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : 'transparent', color: active ? COLORS.bg : COLORS.muted }}><Icon size={20} /></div><span className="text-[10px] font-black" style={{ color: active ? COLORS.gold : COLORS.muted }}>{tab.label}</span></button>; })}
+      {/* MOBILE BOTTOM - 5 ONGLETS ÉQUILIBRÉS INCLUANT CONTACTS */}
+      <div className="flex md:hidden h-[72px] border-t items-center justify-between px-2 pb-[env(safe-area-inset-bottom)] shrink-0" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
+        {[
+          { id: 'groups', icon: Home, label: 'Groupes' },
+          { id: 'channels', icon: MessageCircle, label: 'Canaux' },
+          { id: 'discover', icon: Compass, label: 'Découvrir' },
+          { id: 'friends', icon: Users, label: 'Amis' },
+          { id: 'contacts', icon: Phone, label: 'Contacts' }
+        ].map(tab => {
+          const Icon = tab.icon;
+          const active = mobileView === tab.id || (tab.id === 'groups' && activeTab === 'groups' && !['discover', 'friends', 'contacts'].includes(mobileView));
+          return (
+            <button 
+              key={tab.id} 
+              onClick={() => { 
+                setActiveTab(tab.id); 
+                setMobileView(tab.id); 
+              }} 
+              className="flex flex-col items-center justify-center flex-1 py-1"
+            >
+              <div className={`w-8 h-8 rounded-[10px] flex items-center justify-center transition-all ${active ? 'shadow-lg scale-105' : ''}`} style={{ background: active ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)` : 'transparent', color: active ? COLORS.bg : COLORS.muted }}>
+                <Icon size={18} />
+              </div>
+              <span className="text-[9px] font-black mt-1" style={{ color: active ? COLORS.gold : COLORS.muted }}>
+                {tab.label}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
       {showCreateGroup && (
