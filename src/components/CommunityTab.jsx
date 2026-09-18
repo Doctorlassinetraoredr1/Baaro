@@ -1,349 +1,70 @@
-import { useState, useRef, useEffect } from 'react';
-import { 
-  Hash, 
-  Mic, 
-  MicOff, 
-  Send, 
-  Plus, 
-  Users, 
-  Search, 
-  MoreVertical, 
-  ShieldAlert,
-  MessageSquare
-} from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { Hash, Mic, MicOff, Send, Plus, Users, Search, MoreVertical, ShieldAlert, MessageSquare, Crown, Pin, Settings, Volume2, Compass, Sparkles, Lock, Globe, Flame, Smile, FileText } from 'lucide-react';
 import { useCommunity, useChannelMessages, useVoiceChannel } from '../hooks/useCommunity';
 import { FollowButton, FriendsTab, FriendRequests } from '../features/friends/index.js';
 import { COLORS } from '../theme.js';
 
+const CATEGORIES = [
+  { id: 'all', label: 'Tous', icon: Compass },
+  { id: 'bamako', label: 'Bamako', icon: Flame },
+  { id: 'business', label: 'Business', icon: Crown },
+  { id: 'tech', label: 'Tech', icon: Hash },
+  { id: 'etudes', label: 'Etudes', icon: FileText },
+  { id: 'divertissement', label: 'Fun', icon: Smile },
+];
+
 export default function CommunityTab({ id, onOpenProfile }) {
-  const { friends, allUsers, groups, createGroup, createChannel, deleteChannel, banMember, updateMemberRole, loadUsers, loading } = useCommunity(id);
-  
+  const { friends, allUsers, groups, createGroup, createChannel, banMember, loading } = useCommunity(id);
   const [activeTab, setActiveTab] = useState('groups');
   const [selectedGroup, setSelectedGroup] = useState(null);
   const [selectedChannel, setSelectedChannel] = useState(null);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
-  const [newGroup, setNewGroup] = useState({ name: '', description: '', is_private: false });
+  const [showCreateChannel, setShowCreateChannel] = useState(false);
+  const [newGroup, setNewGroup] = useState({ name: '', description: '', is_public: true, category: 'bamako', type: 'community' });
+  const [newChannel, setNewChannel] = useState({ name: '', type: 'text' });
   const [search, setSearch] = useState('');
+  const [groupSearch, setGroupSearch] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('all');
   const [showMembers, setShowMembers] = useState(true);
-
-  const { messages, sendMessage } = useChannelMessages(selectedChannel?.id);
+  const { messages, sendMessage } = useChannelMessages(selectedChannel?.id) || { messages: [], sendMessage: ()=>{} };
   const { participants: voiceParticipants, isJoined, joinVoice, leaveVoice } = useVoiceChannel(selectedChannel?.id, id);
   const [msgText, setMsgText] = useState('');
   const messagesEndRef = useRef(null);
-
-  const myRole = selectedGroup?.members?.find(m => m.id === id)?.role || selectedGroup?.myRole;
+  const myRole = useMemo(() => selectedGroup?.members?.find(m => m.user_id === id || m.id === id)?.role || 'member', [selectedGroup, id]);
   const isAdmin = ['owner', 'admin'].includes(myRole);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
-
-  const handleCreateGroup = async () => {
-    if (!newGroup.name.trim()) return;
-    try {
-      const g = await createGroup(newGroup);
-      setShowCreateGroup(false);
-      setNewGroup({ name: '', description: '', is_private: false });
-      setSelectedGroup(g);
-    } catch (error) {
-      console.error("Erreur création groupe:", error);
-    }
-  };
-
-  const handleSendMessage = () => {
-    if (!msgText.trim() || !id) return;
-    sendMessage(msgText, id);
-    setMsgText('');
-  };
-
-  const handleBanMember = async (groupId, memberId) => {
-    if (!window.confirm("Bannir ce membre du groupe ?")) return;
-    try {
-      await banMember(groupId, memberId);
-    } catch (error) {
-      console.error("Erreur banissement:", error);
-    }
-  };
-
+  useEffect(() => { if (!selectedGroup && groups.length > 0) { setSelectedGroup(groups[0]); setSelectedChannel(groups[0].channels?.[0] || null); } }, [groups, selectedGroup]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+  const filteredGroups = useMemo(() => groups.filter(g => { const ms = !groupSearch || g.name.toLowerCase().includes(groupSearch.toLowerCase()); const mc = selectedCategory === 'all' || (g.category || 'bamako') === selectedCategory; return ms && mc; }), [groups, groupSearch, selectedCategory]);
+  const textChannels = useMemo(() => selectedGroup?.channels?.filter(c => c.type !== 'voice') || [], [selectedGroup]);
+  const voiceChannels = useMemo(() => selectedGroup?.channels?.filter(c => c.type === 'voice') || [], [selectedGroup]);
+  const handleCreateGroup = async () => { if (!newGroup.name.trim()) return; try { const g = await createGroup(newGroup); setShowCreateGroup(false); setNewGroup({ name: '', description: '', is_public: true, category: 'bamako', type: 'community' }); setSelectedGroup(g); setSelectedChannel(g.channels?.[0] || null); } catch (e) { console.error(e); } };
+  const handleCreateChannel = async () => { if (!newChannel.name.trim() || !selectedGroup) return; try { const ch = await createChannel(selectedGroup.id, newChannel); setShowCreateChannel(false); setNewChannel({ name: '', type: 'text' }); if (ch) setSelectedChannel(ch); } catch (e) { console.error(e); } };
+  const handleSendMessage = () => { if (!msgText.trim() || !id) return; sendMessage(msgText, id); setMsgText(''); };
+  const handleBanMember = async (gid, mid) => { if (!window.confirm("Bannir ?")) return; try { await banMember(gid, mid); } catch (e) { console.error(e); } };
+  if (loading) return <div className="flex h-[calc(100vh-70px)] w-full animate-pulse" style={{ background: COLORS.bg }}><div className="w-[72px] border-r" style={{ background: COLORS.surface }} /><div className="w-64 border-r" style={{ background: COLORS.surface }} /><div className="flex-1" /></div>;
   return (
-    <div className="flex h-[calc(100vh-70px)] w-full" style={{ background: COLORS.bg, color: COLORS.ivory }}>
-      
-      {/* 1. Sidebar Gauche : Liste des Groupes */}
-      <div className="w-[72px] flex flex-col items-center py-4 gap-3 border-r" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
-        {groups.map(g => (
-          <button 
-            key={g.id} 
-            onClick={() => { setSelectedGroup(g); setSelectedChannel(g.channels?.[0] || null); }} 
-            className={`w-12 h-12 rounded-[18px] font-bold text-lg transition-all duration-200 hover:rounded-xl ${selectedGroup?.id === g.id ? 'scale-110' : 'grayscale hover:grayscale-0'}`}
-            style={{ 
-              background: selectedGroup?.id === g.id ? COLORS.gold : COLORS.surface2,
-              color: selectedGroup?.id === g.id ? COLORS.bg : COLORS.muted
-            }}
-          >
-            {g.name[0]?.toUpperCase()}
-          </button>
-        ))}
-        <button 
-          onClick={() => setShowCreateGroup(true)} 
-          className="w-12 h-12 rounded-[18px] flex items-center justify-center transition-all hover:rounded-xl hover:bg-white/10"
-          style={{ background: COLORS.surface2, color: COLORS.teal }}
-        >
-          <Plus size={24} />
-        </button>
+    <div className="flex h-[calc(100vh-70px)] w-full overflow-hidden" style={{ background: COLORS.bg, color: COLORS.ivory }}>
+      <div className="w-[72px] flex flex-col items-center py-3 gap-2.5 border-r shrink-0 overflow-y-auto" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
+        <button className="w-12 h-12 rounded-[16px] flex items-center justify-center mb-1" style={{ background: activeTab==='discover' ? COLORS.gold : COLORS.surface2, color: activeTab==='discover' ? COLORS.bg : COLORS.teal }} onClick={()=>setActiveTab('discover')}><Compass size={22} /></button>
+        <div className="w-8 h-0.5 rounded-full opacity-20" style={{ background: COLORS.border }} />
+        {filteredGroups.map(g => { const sel = selectedGroup?.id === g.id; return <div key={g.id} className="relative"><button onClick={() => { setSelectedGroup(g); setSelectedChannel(g.channels?.[0] || null); setActiveTab('groups'); }} className={"w-12 h-12 rounded-[18px] font-bold text-[16px] relative flex items-center justify-center " + (sel ? 'scale-105' : '')} style={{ background: sel ? "linear-gradient(135deg, "+COLORS.gold+", #ff8c42)" : COLORS.surface2, color: sel ? COLORS.bg : COLORS.muted }}>{g.avatar_url ? <img src={g.avatar_url} className="w-full h-full rounded-[inherit] object-cover" alt="" /> : g.name[0]?.toUpperCase()}{!g.is_public && <Lock size={10} className="absolute -bottom-1 -right-1 bg-black rounded-full p-0.5" />}</button>{g.is_boosted && <Sparkles size={10} className="absolute -top-1 -right-1 text-amber-400" />}</div>; })}
+        <button onClick={() => setShowCreateGroup(true)} className="w-12 h-12 rounded-[18px] flex items-center justify-center mt-1" style={{ background: COLORS.surface2, color: COLORS.teal, border: "1px dashed "+COLORS.border }}><Plus size={22} /></button>
       </div>
-
-      {/* 2. Sidebar Milieu : Canaux, Membres, Amis */}
-      <div className="w-64 flex flex-col border-r" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
-        <div className="h-14 px-4 flex items-center font-bold border-b shadow-sm" style={{ borderColor: COLORS.border }}>
-          {selectedGroup?.name || 'Communauté'}
-        </div>
-        
-        <div className="flex gap-1 p-2 border-b" style={{ borderColor: COLORS.border }}>
-          {['groups', 'friends', 'discover'].map(tab => (
-            <button 
-              key={tab}
-              onClick={() => setActiveTab(tab)} 
-              className={`flex-1 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-colors ${activeTab === tab ? 'bg-white/10' : 'hover:bg-white/5'}`}
-              style={{ color: activeTab === tab ? COLORS.gold : COLORS.muted }}
-            >
-              {tab === 'groups' ? 'Canaux' : tab === 'friends' ? 'Amis' : 'Découvrir'}
-            </button>
-          ))}
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-2 py-2 custom-scrollbar">
-          {/* ONGLET GROUPES */}
-          {activeTab === 'groups' && selectedGroup && (
-            <>
-              <div className="mb-4">
-                <p className="text-[10px] font-bold uppercase px-2 mb-1" style={{ color: COLORS.muted }}>Canaux Texte</p>
-                {selectedGroup.channels?.filter(c => c.type !== 'voice').map(ch => (
-                  <button 
-                    key={ch.id} 
-                    onClick={() => setSelectedChannel(ch)} 
-                    className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm transition-colors ${selectedChannel?.id === ch.id ? 'bg-white/10' : 'hover:bg-white/5'}`}
-                    style={{ color: selectedChannel?.id === ch.id ? COLORS.ivory : COLORS.muted }}
-                  >
-                    <Hash size={16} /> {ch.name}
-                  </button>
-                ))}
-              </div>
-              
-              <div className="mb-4">
-                <p className="text-[10px] font-bold uppercase px-2 mb-1" style={{ color: COLORS.muted }}>Canaux Vocaux</p>
-                {selectedGroup.channels?.filter(c => c.type === 'voice').map(ch => (
-                  <button 
-                    key={ch.id} 
-                    onClick={() => setSelectedChannel(ch)} 
-                    className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm hover:bg-white/5 transition-colors"
-                    style={{ color: COLORS.muted }}
-                  >
-                    <Mic size={16} /> {ch.name}
-                  </button>
-                ))}
-              </div>
-
-              {showMembers && selectedGroup.members && (
-                <div>
-                  <div className="flex items-center justify-between px-2 mb-1">
-                    <p className="text-[10px] font-bold uppercase" style={{ color: COLORS.muted }}>Membres — {selectedGroup.members.length}</p>
-                    <button onClick={() => setShowMembers(false)} style={{ color: COLORS.muted }}><MoreVertical size={14} /></button>
-                  </div>
-                  {selectedGroup.members.map(m => (
-                    <div key={m.id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 group">
-                      <img 
-                        src={m.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${m.profiles?.display_name || 'U'}`} 
-                        className="w-7 h-7 rounded-full border" 
-                        style={{ borderColor: COLORS.border }}
-                        alt=""
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-semibold truncate" style={{ color: COLORS.ivory }}>{m.profiles?.display_name || 'Membre'}</p>
-                        <p className="text-[10px] truncate" style={{ color: m.id === id ? COLORS.teal : COLORS.muted }}>
-                          {m.id === id ? 'Vous' : (m.role === 'owner' ? 'Propriétaire' : m.role === 'admin' ? 'Admin' : 'Membre')}
-                        </p>
-                      </div>
-                      {isAdmin && m.id !== id && (
-                        <button 
-                          onClick={() => handleBanMember(selectedGroup.id, m.id)} 
-                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-500/20 transition-all"
-                          style={{ color: '#ef4444' }}
-                          title="Bannir"
-                        >
-                          <ShieldAlert size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {/* ✅ ONGLET AMIS */}
-          {activeTab === 'friends' && (
-            <div className="flex flex-col h-full">
-              <div className="flex-1 overflow-y-auto custom-scrollbar">
-                <FriendRequests onOpenProfile={onOpenProfile} />
-                <div className="border-t my-4 mx-2" style={{ borderColor: COLORS.border }} />
-                <FriendsTab onOpenProfile={onOpenProfile} />
-              </div>
-            </div>
-          )}
-
-          {/* ONGLET DÉCOUVRIR */}
-          {activeTab === 'discover' && (
-            <div className="space-y-1">
-              <div className="relative mb-2 px-2">
-                <Search size={14} className="absolute left-5 top-1/2 -translate-y-1/2" style={{ color: COLORS.muted }} />
-                <input 
-                  type="text" 
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Rechercher..." 
-                  className="w-full pl-8 pr-3 py-1.5 rounded-lg text-xs outline-none border"
-                  style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-                />
-              </div>
-              {allUsers.filter(u => u.display_name?.toLowerCase().includes(search.toLowerCase())).map(u => (
-                <div key={u.id} className="flex items-center justify-between gap-2 py-2 px-2 rounded-lg hover:bg-white/5">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <img src={u.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${u.display_name}`} className="w-7 h-7 rounded-full" alt="" />
-                    <span className="text-xs font-semibold truncate" style={{ color: COLORS.ivory }}>{u.display_name}</span>
-                  </div>
-                  {u.id !== id && <FollowButton targetId={u.id} currentUserId={id} />}
-                </div>
-              ))}
-            </div>
-          )}
+      <div className="w-[300px] flex flex-col border-r shrink-0" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
+        <div className="h-[52px] px-4 flex items-center justify-between border-b shrink-0" style={{ borderColor: COLORS.border }}><div className="flex items-center gap-2 min-w-0"><h2 className="font-bold text-[15px] truncate" style={{ color: COLORS.ivory }}>{selectedGroup?.name || 'Communaute'}</h2>{selectedGroup && (selectedGroup.is_public ? <Globe size={12} /> : <Lock size={12} />)}{selectedGroup?.is_boosted && <Sparkles size={12} style={{ color: COLORS.gold }} />}</div></div>
+        <div className="flex gap-1 p-2 border-b shrink-0" style={{ borderColor: COLORS.border }}>{[{id:'groups', label:'Canaux', icon: Hash},{id:'friends', label:'Amis', icon: Users},{id:'discover', label:'Decouvrir', icon: Compass}].map(tab => { const Icon = tab.icon; const active = activeTab===tab.id; return <button key={tab.id} onClick={() => setActiveTab(tab.id)} className="flex-1 flex items-center justify-center gap-1 py-2 rounded-[10px] text-[11px] font-bold uppercase" style={{ background: active ? 'rgba(255,255,255,0.08)' : 'transparent', color: active ? COLORS.gold : COLORS.muted }}><Icon size={13} /> {tab.label}</button>; })}</div>
+        {activeTab==='groups' && <div className="px-3 py-2 shrink-0"><div className="relative"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: COLORS.muted }} /><input value={groupSearch} onChange={e=>setGroupSearch(e.target.value)} placeholder="Filtrer groupes..." className="w-full pl-9 pr-3 py-2 rounded-xl text-xs outline-none border" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} /></div></div>}
+        <div className="flex-1 overflow-y-auto px-2 py-2">
+          {activeTab === 'groups' && selectedGroup && (<><div className="mb-5"><div className="flex items-center justify-between px-2 mb-2"><p className="text-[10px] font-bold uppercase" style={{ color: COLORS.muted }}>Texte — {textChannels.length}</p>{isAdmin && <button onClick={()=>setShowCreateChannel(true)} className="p-1 rounded hover:bg-white/10"><Plus size={12} /></button>}</div><div className="space-y-0.5">{textChannels.map(ch => { const active = selectedChannel?.id === ch.id; return <button key={ch.id} onClick={() => setSelectedChannel(ch)} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] text-left" style={{ background: active ? 'rgba(255,255,255,0.08)' : 'transparent', color: active ? COLORS.ivory : COLORS.muted }}><Hash size={16} /><span className="flex-1 truncate">{ch.name}</span></button>; })}</div></div><div className="mb-6"><p className="text-[10px] font-bold uppercase px-2 mb-2" style={{ color: COLORS.muted }}>Vocaux — {voiceChannels.length}</p><div className="space-y-0.5">{voiceChannels.map(ch => <button key={ch.id} onClick={() => setSelectedChannel(ch)} className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[10px] text-[13px] text-left hover:bg-white/5" style={{ color: COLORS.muted }}><Volume2 size={16} /><span>{ch.name}</span></button>)}</div></div><div><div className="flex items-center justify-between px-2 mb-2"><p className="text-[10px] font-bold uppercase" style={{ color: COLORS.muted }}>Membres — {selectedGroup.members?.length||0}</p><button onClick={() => setShowMembers(!showMembers)} className="p-1 rounded hover:bg-white/10"><MoreVertical size={12} /></button></div>{showMembers && <div className="space-y-1">{(selectedGroup.members||[]).map(m => { const prof = m.profiles || m; const uid = m.user_id || m.id; return <div key={uid} className="flex items-center gap-2.5 px-2 py-1.5 rounded-[10px] hover:bg-white/5 group"><img src={prof?.avatar_url || "https://api.dicebear.com/7.x/initials/svg?seed="+(prof?.display_name||'U')} className="w-8 h-8 rounded-full border" style={{ borderColor: COLORS.border }} alt="" /><div className="flex-1 min-w-0 cursor-pointer" onClick={()=>onOpenProfile?.(uid)}><p className="text-[13px] font-medium truncate" style={{ color: COLORS.ivory }}>{prof?.display_name || 'Membre'}</p><p className="text-[11px] truncate" style={{ color: uid===id ? COLORS.teal : COLORS.muted }}>{uid===id ? 'Vous' : m.role}</p></div>{isAdmin && uid!==id && <button onClick={()=>handleBanMember(selectedGroup.id, uid)} className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-500/20" style={{ color: '#ef4444' }}><ShieldAlert size={14} /></button>}</div>; })}</div>}</div></>)}
+          {activeTab === 'friends' && <div className="flex flex-col h-full"><FriendRequests onOpenProfile={onOpenProfile} /><div className="border-t my-3 mx-2" style={{ borderColor: COLORS.border }} /><FriendsTab onOpenProfile={onOpenProfile} /></div>}
+          {activeTab === 'discover' && (<div className="space-y-4"><div className="px-1"><div className="flex gap-1.5 overflow-x-auto pb-2">{CATEGORIES.map(cat => { const Icon = cat.icon; const active = selectedCategory===cat.id; return <button key={cat.id} onClick={()=>setSelectedCategory(cat.id)} className={"flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap "+(active?'scale-105':'')} style={{ background: active?COLORS.gold:COLORS.surface2, color: active?COLORS.bg:COLORS.muted }}><Icon size={12} /> {cat.label}</button>; })}</div></div><div className="relative px-1"><Search size={14} className="absolute left-4 top-1/2 -translate-y-1/2" style={{ color: COLORS.muted }} /><input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Rechercher..." className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs outline-none border" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} /></div><div className="space-y-2"><p className="text-[11px] font-bold uppercase px-2" style={{ color: COLORS.muted }}>Groupes</p>{groups.filter(g=>!search || g.name.toLowerCase().includes(search.toLowerCase())).slice(0,8).map(g => <div key={g.id} className="p-3 rounded-[14px] border hover:border-amber-400/30 cursor-pointer" style={{ background: COLORS.surface2, borderColor: COLORS.border }} onClick={()=>{setSelectedGroup(g); setSelectedChannel(g.channels?.[0]||null); setActiveTab('groups');}}><div className="flex gap-3"><div className="w-11 h-11 rounded-[12px] flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden" style={{ background: "linear-gradient(135deg, "+COLORS.gold+", #ff8c42)", color: COLORS.bg }}>{g.avatar_url ? <img src={g.avatar_url} className="w-full h-full object-cover" alt="" /> : g.name[0]}</div><div className="flex-1 min-w-0"><p className="text-[13px] font-bold truncate flex items-center gap-1" style={{ color: COLORS.ivory }}>{g.name}{g.is_boosted && <Sparkles size={12} className="text-amber-400" />}</p><p className="text-[11px] truncate" style={{ color: COLORS.muted }}>{g.description || 'Communauté Baaro'}</p><div className="flex items-center gap-3 mt-1.5"><span className="flex items-center gap-1 text-[10px]" style={{ color: COLORS.muted }}><Users size={10} /> {g.members?.length || 0}</span><span className="flex items-center gap-1 text-[10px]" style={{ color: COLORS.muted }}>{g.is_public ? <Globe size={10} /> : <Lock size={10} />} {g.is_public ? 'Public' : 'Privé'}</span></div></div></div></div>)}</div></div>)}
         </div>
       </div>
-
-      {/* 3. Zone Principale : Chat ou Vocal */}
-      <div className="flex-1 flex flex-col" style={{ background: COLORS.bg }}>
-        {!selectedChannel ? (
-          <div className="flex-1 flex flex-col items-center justify-center" style={{ color: COLORS.muted }}>
-            <MessageSquare size={48} className="mb-4 opacity-20" />
-            <p className="text-sm">Sélectionne un canal pour commencer</p>
-          </div>
-        ) : selectedChannel.type === 'voice' ? (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4">
-            <div className="w-20 h-20 rounded-full flex items-center justify-center mb-2" style={{ background: COLORS.surface2 }}>
-              <Mic size={40} style={{ color: isJoined ? COLORS.teal : COLORS.muted }} />
-            </div>
-            <h3 className="text-lg font-bold" style={{ color: COLORS.ivory }}>{selectedChannel.name}</h3>
-            <p className="text-xs mb-4" style={{ color: COLORS.muted }}>{voiceParticipants?.length || 0} participant(s)</p>
-            
-            {!isJoined ? (
-              <button onClick={joinVoice} className="flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm transition-transform active:scale-95" style={{ background: COLORS.teal, color: COLORS.bg }}>
-                <Mic size={18} /> Rejoindre le vocal
-              </button>
-            ) : (
-              <button onClick={leaveVoice} className="flex items-center gap-2 px-6 py-3 rounded-full font-bold text-sm transition-transform active:scale-95" style={{ background: '#ef4444', color: '#fff' }}>
-                <MicOff size={18} /> Quitter
-              </button>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-              {messages.length === 0 && (
-                <div className="text-center py-10" style={{ color: COLORS.muted }}>
-                  <p className="text-sm">Aucun message pour le moment.</p>
-                  <p className="text-xs mt-1">Sois le premier à écrire dans #{selectedChannel.name} !</p>
-                </div>
-              )}
-              {messages.map(m => (
-                <div key={m.id} className="flex gap-3 group hover:bg-white/5 p-2 rounded-lg transition-colors">
-                  <img 
-                    src={m.profiles?.avatar_url || `https://api.dicebear.com/7.x/initials/svg?seed=${m.profiles?.display_name}`} 
-                    className="w-9 h-9 rounded-full border flex-shrink-0" 
-                    style={{ borderColor: COLORS.border }}
-                    alt=""
-                  />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-xs font-bold" style={{ color: COLORS.ivory }}>{m.profiles?.display_name || 'Membre'}</span>
-                      <span className="text-[10px]" style={{ color: COLORS.muted }}>
-                        {new Date(m.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="text-sm leading-relaxed mt-0.5" style={{ color: COLORS.ivory }}>{m.text}</p>
-                  </div>
-                </div>
-              ))}
-              <div ref={messagesEndRef} />
-            </div>
-            
-            <div className="p-4 border-t" style={{ borderColor: COLORS.border }}>
-              <div className="flex items-center gap-2 rounded-xl border px-3 py-1 transition-colors focus-within:border-amber-400/50" style={{ background: COLORS.surface2, borderColor: COLORS.border }}>
-                <input 
-                  value={msgText} 
-                  onChange={e => setMsgText(e.target.value)} 
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} 
-                  placeholder={`Message dans #${selectedChannel.name}`} 
-                  className="flex-1 bg-transparent py-2.5 text-sm outline-none placeholder:text-gray-500"
-                  style={{ color: COLORS.ivory }}
-                />
-                <button 
-                  onClick={handleSendMessage} 
-                  disabled={!msgText.trim()}
-                  className="p-2 rounded-lg transition-all disabled:opacity-30 disabled:cursor-not-allowed hover:bg-white/10"
-                  style={{ color: COLORS.gold }}
-                >
-                  <Send size={18} />
-                </button>
-              </div>
-            </div>
-          </>
-        )}
+      <div className="flex-1 flex flex-col min-w-0" style={{ background: COLORS.bg }}>
+        {!selectedChannel ? (<div className="flex-1 flex flex-col items-center justify-center p-8 text-center" style={{ color: COLORS.muted }}><div className="w-20 h-20 rounded-[20px] flex items-center justify-center mb-5" style={{ background: COLORS.surface2 }}><MessageSquare size={32} className="opacity-30" /></div><h3 className="text-[16px] font-bold mb-2" style={{ color: COLORS.ivory }}>Bienvenue sur Baaro Communauté</h3><p className="text-[13px] max-w-[320px]">Sélectionne un canal pour commencer.</p><div className="flex gap-2 mt-6"><button onClick={()=>setActiveTab('discover')} className="px-4 py-2 rounded-full text-xs font-bold" style={{ background: COLORS.gold, color: COLORS.bg }}>Découvrir</button><button onClick={()=>setShowCreateGroup(true)} className="px-4 py-2 rounded-full text-xs font-bold border" style={{ borderColor: COLORS.border, color: COLORS.ivory }}>Créer un groupe</button></div></div>) : selectedChannel.type === 'voice' ? (<div className="flex-1 flex flex-col"><div className="h-14 px-5 flex items-center justify-between border-b" style={{ borderColor: COLORS.border }}><div className="flex items-center gap-3"><Volume2 size={18} style={{ color: COLORS.teal }} /><h3 className="font-bold text-[14px]" style={{ color: COLORS.ivory }}>{selectedChannel.name}</h3></div></div><div className="flex-1 flex flex-col items-center justify-center gap-6 p-8"><div className="grid grid-cols-3 gap-4">{(voiceParticipants||[]).map(p => <div key={p.id} className="flex flex-col items-center gap-2"><img src={p.avatar_url} className="w-16 h-16 rounded-full border-2" style={{ borderColor: COLORS.border }} alt="" /><span className="text-xs" style={{ color: COLORS.ivory }}>{p.display_name?.split(' ')[0]}</span></div>)}</div><div className="flex items-center gap-3 mt-4">{!isJoined ? <button onClick={joinVoice} className="flex items-center gap-2 px-7 py-3 rounded-full font-bold text-sm" style={{ background: COLORS.teal, color: COLORS.bg }}><Mic size={18} /> Rejoindre</button> : <button onClick={leaveVoice} className="flex items-center gap-2 px-7 py-3 rounded-full font-bold text-sm bg-red-500 text-white"><MicOff size={18} /> Quitter</button>}</div></div></div>) : (<><div className="h-14 px-5 flex items-center justify-between border-b shrink-0" style={{ borderColor: COLORS.border }}><div className="flex items-center gap-3 min-w-0"><Hash size={18} style={{ color: COLORS.muted }} /><h3 className="font-bold text-[14px] truncate" style={{ color: COLORS.ivory }}>{selectedChannel.name}</h3><span className="hidden md:flex items-center gap-1.5 text-[11px] pl-3 ml-3 border-l" style={{ borderColor: COLORS.border, color: COLORS.muted }}><Pin size={12} /> {selectedChannel.topic || selectedChannel.description || ''}</span></div></div><div className="flex-1 overflow-y-auto p-4 space-y-1"><div className="text-center py-6 text-xs" style={{ color: COLORS.muted }}>Debut de #{selectedChannel.name}</div>{messages.map(m => <div key={m.id} className="flex gap-3 px-2 py-1 rounded-xl hover:bg-white/[0.04]"><img src={m.profiles?.avatar_url || "https://api.dicebear.com/7.x/initials/svg?seed=Membre"} className="w-9 h-9 rounded-full border mt-0.5" style={{ borderColor: COLORS.border }} alt="" /><div className="flex-1 min-w-0"><div className="flex items-baseline gap-2 mb-0.5"><span className="text-[13px] font-bold" style={{ color: COLORS.ivory }}>{m.profiles?.display_name || 'Membre'}</span><span className="text-[11px]" style={{ color: COLORS.muted }}>{new Date(m.created_at).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</span></div><p className="text-[14px] leading-[22px] break-words" style={{ color: COLORS.ivory }}>{m.text || m.content}</p></div></div>)}<div ref={messagesEndRef} /></div><div className="p-3 border-t shrink-0" style={{ borderColor: COLORS.border }}><div className="flex items-end gap-2 rounded-[16px] border px-3 py-2" style={{ background: COLORS.surface2, borderColor: COLORS.border }}><textarea value={msgText} onChange={e => setMsgText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSendMessage(); } }} placeholder={"Message dans #"+selectedChannel.name} rows={1} className="flex-1 bg-transparent py-2 text-[14px] outline-none resize-none max-h-[120px] min-h-[24px]" style={{ color: COLORS.ivory }} /><button onClick={handleSendMessage} disabled={!msgText.trim()} className="p-2.5 rounded-xl transition-all disabled:opacity-30" style={{ background: msgText.trim() ? COLORS.gold : COLORS.surface, color: msgText.trim() ? COLORS.bg : COLORS.muted }}><Send size={16} /></button></div></div></>)}
       </div>
-
-      {/* Modal de Création de Groupe */}
-      {showCreateGroup && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowCreateGroup(false)}>
-          <div 
-            className="w-full max-w-sm rounded-2xl border shadow-2xl p-6" 
-            style={{ background: COLORS.surface, borderColor: COLORS.borderGold }}
-            onClick={e => e.stopPropagation()}
-          >
-            <h3 className="text-base font-bold mb-4" style={{ color: COLORS.ivory }}>Créer un nouveau groupe</h3>
-            <input 
-              value={newGroup.name} 
-              onChange={e => setNewGroup({ ...newGroup, name: e.target.value })} 
-              placeholder="Nom du groupe" 
-              className="w-full p-3 rounded-xl mb-3 text-sm outline-none border focus:border-amber-400/50 transition-colors"
-              style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-              autoFocus
-            />
-            <textarea 
-              value={newGroup.description} 
-              onChange={e => setNewGroup({ ...newGroup, description: e.target.value })} 
-              placeholder="Description (optionnel)" 
-              rows={3}
-              className="w-full p-3 rounded-xl mb-4 text-sm outline-none border focus:border-amber-400/50 transition-colors resize-none"
-              style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }}
-            />
-            <div className="flex justify-end gap-3">
-              <button 
-                onClick={() => setShowCreateGroup(false)} 
-                className="px-4 py-2 rounded-lg text-xs font-bold hover:bg-white/5 transition-colors"
-                style={{ color: COLORS.muted }}
-              >
-                Annuler
-              </button>
-              <button 
-                onClick={handleCreateGroup} 
-                disabled={!newGroup.name.trim()}
-                className="px-5 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95"
-                style={{ background: COLORS.gold, color: COLORS.bg }}
-              >
-                Créer le groupe
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {showCreateGroup && (<div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setShowCreateGroup(false)}><div className="w-full max-w-[420px] rounded-[20px] border shadow-2xl p-6" style={{ background: COLORS.surface, borderColor: COLORS.borderGold }} onClick={e=>e.stopPropagation()}><h3 className="text-[16px] font-bold mb-4" style={{ color: COLORS.ivory }}>Creer un groupe</h3><input value={newGroup.name} onChange={e=>setNewGroup({...newGroup, name: e.target.value})} placeholder="Nom du groupe" className="w-full p-3 rounded-xl mb-3 text-sm outline-none border" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} autoFocus /><textarea value={newGroup.description} onChange={e=>setNewGroup({...newGroup, description: e.target.value})} placeholder="Description" rows={3} className="w-full p-3 rounded-xl mb-3 text-sm outline-none border resize-none" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} /><div className="flex gap-2 mb-4 flex-wrap">{CATEGORIES.slice(1).map(c=><button key={c.id} onClick={()=>setNewGroup({...newGroup, category: c.id})} className="px-3 py-1.5 rounded-full text-[11px] font-bold border" style={{ background: newGroup.category===c.id?COLORS.gold:COLORS.surface2, color: newGroup.category===c.id?COLORS.bg:COLORS.muted, borderColor: newGroup.category===c.id?COLORS.gold:COLORS.border }}>{c.label}</button>)}</div><label className="flex items-center gap-2 mb-5 cursor-pointer"><input type="checkbox" checked={newGroup.is_public} onChange={e=>setNewGroup({...newGroup, is_public: e.target.checked})} className="rounded" /><span className="text-xs flex items-center gap-1" style={{ color: COLORS.muted }}><Globe size={12} /> Public</span></label><div className="flex justify-end gap-2"><button onClick={()=>setShowCreateGroup(false)} className="px-4 py-2.5 rounded-xl text-xs font-bold" style={{ color: COLORS.muted }}>Annuler</button><button onClick={handleCreateGroup} disabled={!newGroup.name.trim()} className="px-5 py-2.5 rounded-xl text-xs font-bold disabled:opacity-50" style={{ background: COLORS.gold, color: COLORS.bg }}>Creer</button></div></div></div>)}
+      {showCreateChannel && (<div className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={()=>setShowCreateChannel(false)}><div className="w-full max-w-[380px] rounded-[20px] border shadow-2xl p-6" style={{ background: COLORS.surface, borderColor: COLORS.border }} onClick={e=>e.stopPropagation()}><h3 className="font-bold mb-4" style={{ color: COLORS.ivory }}>Nouveau canal dans {selectedGroup?.name}</h3><input value={newChannel.name} onChange={e=>setNewChannel({...newChannel, name: e.target.value})} placeholder="nom-du-canal" className="w-full p-3 rounded-xl mb-3 text-sm outline-none border" style={{ background: COLORS.surface2, borderColor: COLORS.border, color: COLORS.ivory }} autoFocus /><div className="flex gap-2 mb-5"><button onClick={()=>setNewChannel({...newChannel, type:'text'})} className="flex-1 py-2 rounded-xl text-xs font-bold" style={{ background: newChannel.type==='text'?COLORS.gold:COLORS.surface2, color: newChannel.type==='text'?COLORS.bg:COLORS.muted }}>Texte</button><button onClick={()=>setNewChannel({...newChannel, type:'voice'})} className="flex-1 py-2 rounded-xl text-xs font-bold" style={{ background: newChannel.type==='voice'?COLORS.teal:COLORS.surface2, color: newChannel.type==='voice'?COLORS.bg:COLORS.muted }}>Vocal</button></div><div className="flex justify-end gap-2"><button onClick={()=>setShowCreateChannel(false)} className="px-4 py-2 rounded-xl text-xs font-bold" style={{ color: COLORS.muted }}>Annuler</button><button onClick={handleCreateChannel} className="px-5 py-2 rounded-xl text-xs font-bold" style={{ background: COLORS.gold, color: COLORS.bg }}>Creer</button></div></div></div>)}
     </div>
   );
 }
