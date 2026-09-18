@@ -655,10 +655,6 @@ export default function CommunityTab({ onOpenProfile }) {
    * ------------------------------------------------------------
    * REMOVE MEMBER
    * ------------------------------------------------------------
-   *
-   * Note:
-   * banMember currently removes the membership.
-   * A real permanent ban requires a dedicated bans table.
    */
 
   const handleRemoveMember = async (member) => {
@@ -954,9 +950,12 @@ export default function CommunityTab({ onOpenProfile }) {
           <div className="flex items-center gap-3 min-w-0">
             {mobileView !== 'groups' && (
               <button
-                onClick={() =>
-                  setMobileView('groups')
-                }
+                onClick={() => {
+                  setMobileView('groups');
+                  if (activeTab === 'contacts' || activeTab === 'friends' || activeTab === 'discover') {
+                    setActiveTab('groups');
+                  }
+                }}
                 className="md:hidden p-2 -ml-2 rounded-xl hover:bg-white/10"
                 style={{
                   color: COLORS.ivory
@@ -969,15 +968,15 @@ export default function CommunityTab({ onOpenProfile }) {
             <div
               className="w-9 h-9 rounded-[12px] flex items-center justify-center font-black text-[16px] shrink-0 overflow-hidden"
               style={{
-                background: selectedGroup
+                background: (selectedGroup && activeTab === 'groups')
                   ? `linear-gradient(135deg, ${COLORS.gold}, #ff8c42)`
                   : COLORS.surface2,
-                color: selectedGroup
+                color: (selectedGroup && activeTab === 'groups')
                   ? COLORS.bg
                   : COLORS.muted
               }}
             >
-              {selectedGroup ? (
+              {(selectedGroup && activeTab === 'groups') ? (
                 selectedGroup.avatar_url ? (
                   <img
                     src={selectedGroup.avatar_url}
@@ -997,11 +996,11 @@ export default function CommunityTab({ onOpenProfile }) {
                 className="font-black text-[15px] truncate tracking-tight"
                 style={{ color: COLORS.ivory }}
               >
-                {activeTab === 'discover'
+                {activeTab === 'discover' || mobileView === 'discover'
                   ? 'Découvrir'
-                  : activeTab === 'friends'
+                  : activeTab === 'friends' || mobileView === 'friends'
                   ? 'Amis'
-                  : activeTab === 'contacts'
+                  : activeTab === 'contacts' || mobileView === 'contacts'
                   ? 'Contacts'
                   : selectedGroup?.name ||
                     'Communautés'}
@@ -1011,7 +1010,7 @@ export default function CommunityTab({ onOpenProfile }) {
                 className="text-[11px] truncate flex items-center gap-1"
                 style={{ color: COLORS.muted }}
               >
-                {selectedGroup ? (
+                {selectedGroup && activeTab === 'groups' ? (
                   <>
                     <Users size={10} />
                     {selectedGroup.members?.length || 0}{' '}
@@ -1107,7 +1106,10 @@ export default function CommunityTab({ onOpenProfile }) {
             activeTab === 'groups') &&
             activeTab !== 'discover' &&
             activeTab !== 'friends' &&
-            activeTab !== 'contacts' && (
+            activeTab !== 'contacts' &&
+            mobileView !== 'contacts' &&
+            mobileView !== 'friends' &&
+            mobileView !== 'discover' && (
               <div className="p-3 space-y-5">
                 {/* GROUP LIST */}
 
@@ -1542,8 +1544,7 @@ export default function CommunityTab({ onOpenProfile }) {
               DISCOVER
           ================================================== */}
 
-          {(mobileView === 'discover' ||
-            activeTab === 'discover') && (
+          {(mobileView === 'discover' || activeTab === 'discover') && (
             <div className="p-4 space-y-6">
               <div className="relative">
                 <Search
@@ -1940,8 +1941,7 @@ export default function CommunityTab({ onOpenProfile }) {
               FRIENDS
           ================================================== */}
 
-          {(mobileView === 'friends' ||
-            activeTab === 'friends') && (
+          {(mobileView === 'friends' || activeTab === 'friends') && (
             <div className="p-3 space-y-4">
               <FriendRequests
                 onOpenProfile={onOpenProfile}
@@ -1964,8 +1964,7 @@ export default function CommunityTab({ onOpenProfile }) {
               CONTACTS
           ================================================== */}
 
-          {(mobileView === 'contacts' ||
-            activeTab === 'contacts') && (
+          {(mobileView === 'contacts' || activeTab === 'contacts') && (
             <ContactsTab
               onOpenProfile={onOpenProfile}
             />
@@ -2897,7 +2896,8 @@ export default function CommunityTab({ onOpenProfile }) {
             <button
               key={tab.id}
               onClick={() => {
-                setActiveTab(tab.id);
+                const targetTab = tab.id === 'channels' ? 'groups' : tab.id;
+                setActiveTab(targetTab);
                 setMobileView(tab.id);
               }}
               className="flex flex-col items-center justify-center flex-1 py-1"
