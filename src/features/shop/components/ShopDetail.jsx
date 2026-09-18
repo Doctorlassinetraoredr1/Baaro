@@ -1,15 +1,14 @@
-import ProductCard from "../../../components/ProductCard.jsx";
-import { BackBar } from "../../../components/BackBar.jsx";
 import { useState, useEffect, useCallback } from "react";
-import { ArrowLeft, Minus, Plus, ShoppingCart, Loader2 } from "lucide-react";
+import { ArrowLeft, ShoppingCart, Loader2 } from "lucide-react";
 import { COLORS } from "../../../theme.js";
 import { fetchShopById, fetchShopProducts } from "../../../services/shopApi.js";
 import OrderCheckout from "./OrderCheckout.jsx";
 import ShopReviews from "../../../components/ShopReviews.jsx";
+import ProductCard from "../../../components/ProductCard.jsx";
 import { useToast } from "../../../components/ToastContext.jsx";
 import { supabase } from "../../../supabaseClient.js";
 
-export default function ShopDetail({ shopId, userId, onBack }) {
+export default function ShopDetail({ shopId, id, onBack }) {
   const { showToast } = useToast();
   const [shop, setShop] = useState(null);
   const [products, setProducts] = useState([]);
@@ -17,7 +16,6 @@ export default function ShopDetail({ shopId, userId, onBack }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [checkout, setCheckout] = useState(false);
-  const [addingId, setAddingId] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,104 +26,48 @@ export default function ShopDetail({ shopId, userId, onBack }) {
         if (!cancelled) { setShop(s); setProducts(p || []); }
       } catch (e) {
         if (!cancelled) setError(e.message || "Impossible de charger la boutique.");
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+      } finally { if (!cancelled) setLoading(false); }
     })();
     return () => { cancelled = true; };
   }, [shopId]);
 
-  // Ajout au panier via la fonction RPC (sécurisé et atomique)
   const addToCart = useCallback(async (product) => {
-    if (!userId) {
-      showToast("Connectez-vous pour ajouter au panier", "info");
-      return;
-    }
-    setAddingId(product.id);
+    if (!id) { showToast("Connectez-vous pour ajouter au panier", "info"); return; }
+    if (product.stock === 0) { showToast("Ce produit est en rupture de stock", "error"); return; }
     try {
-      const { error } = await supabase.rpc('add_to_cart', {
-        p_user_id: userId,
-        p_item_id: product.id,
-        p_quantity: 1
-      });
-      
+      const { error } = await supabase.rpc('add_to_cart', { p_user_id: id, p_item_id: product.id, p_quantity: 1 });
       if (error) throw error;
-      
       setCart((items) => {
         const old = items.find((x) => x.productId === product.id);
         if (old) return items.map((x) => x.productId === product.id ? { ...x, quantity: x.quantity + 1 } : x);
-        return [...items, {
-          productId: product.id,
-          name: product.name,
-          unitPrice: Number(product.price),
-          currency: product.currency || shop?.currency || "XOF",
-          quantity: 1
-        }];
+        return [...items, { productId: product.id, name: product.name, unitPrice: Number(product.price), currency: product.currency || shop?.currency || "XOF", quantity: 1 }];
       });
-      showToast(`${product.name} ajouté au panier`, "success");
+      showToast(`${product.name} ajouté`, "success");
     } catch (e) {
       console.error("Erreur ajout panier:", e);
       showToast("Erreur lors de l'ajout au panier", "error");
-    } finally {
-      setAddingId(null);
     }
-  }, [userId, shop?.currency, showToast]);
+  }, [id, shop?.currency, showToast]);
 
-  // Modification de quantité (✅ Convention 'id' appliquée ici)
   const changeQuantity = useCallback(async (productId, delta) => {
-    if (!userId) return;
+    if (!id) return;
     const item = cart.find((x) => x.productId === productId);
     if (!item) return;
-    
     const newQty = item.quantity + delta;
-    
     try {
-      if (newQty <= 0) {
-        // ✅ 'id' au lieu de 'user_id'
-        await supabase.from('cart').delete().eq('item_id', productId).eq('id', userId);
-      } else {
-        // ✅ 'id' au lieu de 'user_id'
-        await supabase.from('cart').update({ quantity: newQty }).eq('item_id', productId).eq('id', userId);
-      }
-      
-      setCart((items) => items
-        .map((x) => x.productId === productId ? { ...x, quantity: newQty } : x)
-        .filter((x) => x.quantity > 0));
+      if (newQty <= 0) await supabase.from('cart').delete().eq('item_id', productId).eq('id', id);
+      else await supabase.from('cart').update({ quantity: newQty }).eq('item_id', productId).eq('id', id);
+      setCart((items) => items.map((x) => x.productId === productId ? { ...x, quantity: newQty } : x).filter((x) => x.quantity > 0));
     } catch (e) {
       console.error("Erreur mise à jour panier:", e);
       showToast("Erreur de mise à jour", "error");
     }
-  }, [userId, cart, showToast]);
+  }, [id, cart, showToast]);
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 gap-3">
-        <Loader2 className="animate-spin" size={32} style={{ color: COLORS.gold }} />
-        <p className="text-sm" style={{ color: COLORS.muted }}>Chargement de la boutique…</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-4 text-center py-8">
-        <p className="text-sm" style={{ color: "#ef4444" }}>{error}</p>
-        <BackBar title={shop?.name || "Boutique"} onBack={onBack} />
-      </div>
-    );
-  }
-
+  if (loading) return <div className="flex flex-col items-center justify-center py-12 gap-3"><Loader2 className="animate-spin" size={32} style={{ color: COLORS.gold }} /><p className="text-sm" style={{ color: COLORS.muted }}>Chargement de la boutique…</p></div>;
+  if (error) return <div className="space-y-4 text-center py-8"><p className="text-sm" style={{ color: "#ef4444" }}>{error}</p><button onClick={onBack} className="text-sm underline" style={{ color: COLORS.ivory }}>Retour</button></div>;
   if (!shop) return null;
-
-  if (checkout) {
-    return <OrderCheckout
-      shop={shop}
-      userId={userId}
-      items={cart}
-      onBack={() => setCheckout(false)}
-      onDone={() => { setCart([]); setCheckout(false); }}
-    />;
-  }
+  if (checkout) return <OrderCheckout shop={shop} id={id} items={cart} onBack={() => setCheckout(false)} onDone={() => { setCart([]); setCheckout(false); }} />;
 
   const total = cart.reduce((sum, x) => sum + x.unitPrice * x.quantity, 0);
   const currency = cart[0]?.currency || shop.currency || "XOF";
@@ -133,83 +75,38 @@ export default function ShopDetail({ shopId, userId, onBack }) {
 
   return (
     <div className="flex flex-col gap-4 pb-24">
-      <button 
-        type="button" 
-        onClick={onBack} 
-        className="flex items-center gap-2 text-sm font-semibold transition-colors hover:opacity-80 w-fit"
-        style={{ color: COLORS.ivory }}
-      >
-        <ArrowLeft size={16} /> Retour
-      </button>
-
+      <button type="button" onClick={onBack} className="flex items-center gap-2 text-sm font-semibold transition-colors hover:opacity-80 w-fit" style={{ color: COLORS.ivory }}><ArrowLeft size={16} /> Retour</button>
       <section className="rounded-2xl border p-4 shadow-sm" style={{ background: COLORS.surface, borderColor: COLORS.border }}>
-        {shop.logo_url && (
-          <img src={shop.logo_url} alt={shop.name} className="mb-3 h-36 w-full rounded-xl object-cover" />
-        )}
+        {shop.logo_url && <img src={shop.logo_url} alt={shop.name} className="mb-3 h-32 w-full rounded-xl object-cover" />}
         <h2 className="text-xl font-bold" style={{ color: COLORS.ivory }}>{shop.name}</h2>
-        <p className="mt-1 text-xs flex flex-wrap gap-1" style={{ color: COLORS.muted }}>
-          {[shop.category, shop.city, shop.country].filter(Boolean).map((item, i, arr) => (
-            <span key={i}>{item}{i < arr.length - 1 ? " · " : ""}</span>
-          ))}
-        </p>
-        {shop.description && (
-          <p className="mt-3 text-sm leading-relaxed" style={{ color: COLORS.muted }}>{shop.description}</p>
-        )}
+        <p className="mt-1 text-xs flex flex-wrap gap-1" style={{ color: COLORS.muted }}>{[shop.category, shop.city, shop.country].filter(Boolean).map((item, i, arr) => (<span key={i}>{item}{i < arr.length - 1 ? " · " : ""}</span>))}</p>
+        {shop.description && <p className="mt-3 text-sm leading-relaxed" style={{ color: COLORS.muted }}>{shop.description}</p>}
       </section>
 
-      <div className="grid gap-3">
+      <div className="flex flex-col gap-3">
         {products.length === 0 ? (
-          <p className="text-center text-sm py-8" style={{ color: COLORS.muted }}>Aucun produit disponible pour le moment.</p>
+          <div className="text-center py-8"><p className="text-sm" style={{ color: COLORS.muted }}>Aucun produit disponible pour le moment.</p></div>
         ) : (
           products.map((p) => {
             const qty = cart.find((x) => x.productId === p.id)?.quantity || 0;
-            return (
-              <div key={p.id} className="space-y-2">
-                <ProductCard
-                  product={{
-                    ...p,
-                    currency: p.currency || currency,
-                    type: p.type || "produit",
-                  }}
-                  onAdd={qty === 0 ? () => addToCart(p) : undefined}
-                />
-                {qty > 0 && (
-                  <div className="flex items-center justify-end gap-2 px-1">
-                    <button type="button" onClick={() => changeQuantity(p.id, -1)} className="p-1 rounded border" style={{ borderColor: COLORS.border, color: COLORS.ivory }}><Minus size={14} /></button>
-                    <span className="text-sm font-bold min-w-[20px] text-center" style={{ color: COLORS.ivory }}>{qty}</span>
-                    <button type="button" onClick={() => changeQuantity(p.id, 1)} className="p-1 rounded border" style={{ borderColor: COLORS.border, color: COLORS.ivory }}><Plus size={14} /></button>
-                  </div>
-                )}
-              </div>
-            );
+            return <ProductCard key={p.id} product={{ ...p, currency: p.currency || currency }} quantity={qty} onAdd={() => addToCart(p)} onRemove={() => changeQuantity(p.id, -1)} />;
           })
         )}
       </div>
 
-      {/* Avis boutique */}
-      <div className="mt-6 px-1">
-        <ShopReviews shopId={shopId} userId={userId} />
+      <div className="mt-4 px-1">
+        <h3 className="text-sm font-bold mb-3" style={{ color: COLORS.ivory }}>Avis clients</h3>
+        <ShopReviews shopId={shopId} id={id} />
       </div>
 
-      {/* Barre de panier flottante */}
       {cart.length > 0 && (
         <div className="fixed bottom-4 left-4 right-4 max-w-2xl mx-auto flex items-center gap-3 rounded-xl border p-3 shadow-2xl backdrop-blur-md z-40" style={{ background: `${COLORS.surface}E6`, borderColor: COLORS.borderGold }}>
-          <div className="p-2 rounded-full flex-shrink-0" style={{ background: COLORS.gold }}>
-            <ShoppingCart size={18} style={{ color: COLORS.bg }} />
-          </div>
+          <div className="p-2 rounded-full flex-shrink-0" style={{ background: COLORS.gold }}><ShoppingCart size={18} style={{ color: COLORS.bg }} /></div>
           <div className="flex-1 text-sm min-w-0">
             <div className="font-semibold truncate" style={{ color: COLORS.ivory }}>{totalItems} article(s)</div>
-            <div className="text-xs" style={{ color: COLORS.muted }}>Total: <span className="font-bold" style={{ color: COLORS.gold }}>{total.toFixed(2)} {currency}</span></div>
+            <div className="text-xs" style={{ color: COLORS.muted }}>Total: <span className="font-bold" style={{ color: COLORS.gold }}>{total.toLocaleString()} {currency}</span></div>
           </div>
-          <button 
-            type="button" 
-            disabled={!userId} 
-            onClick={() => setCheckout(true)} 
-            className="rounded-lg px-4 py-2.5 text-sm font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" 
-            style={{ background: COLORS.gold, color: COLORS.bg }}
-          >
-            Commander
-          </button>
+          <button type="button" disabled={!id} onClick={() => setCheckout(true)} className="rounded-lg px-4 py-2.5 text-sm font-bold transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0" style={{ background: COLORS.gold, color: COLORS.bg }}>Commander</button>
         </div>
       )}
     </div>
