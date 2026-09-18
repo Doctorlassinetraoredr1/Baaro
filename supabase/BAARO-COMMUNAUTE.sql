@@ -574,3 +574,33 @@ USING (
 WITH CHECK (
   user_id = auth.uid()
 );
+
+DROP POLICY IF EXISTS community_members_insert
+ON public.group_members;
+
+CREATE POLICY community_members_insert
+ON public.group_members
+FOR INSERT
+TO authenticated
+WITH CHECK (
+  (
+    user_id = auth.uid()
+    AND EXISTS (
+      SELECT 1
+      FROM public.groups g
+      WHERE g.id = group_members.group_id
+        AND (
+          g.is_public = true
+          OR g.owner_id = auth.uid()
+        )
+    )
+  )
+  OR
+  EXISTS (
+    SELECT 1
+    FROM public.group_members me
+    WHERE me.group_id = group_members.group_id
+      AND me.user_id = auth.uid()
+      AND me.role IN ('owner', 'admin')
+  )
+);
