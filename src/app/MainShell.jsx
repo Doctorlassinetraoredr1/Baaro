@@ -78,7 +78,14 @@ export function MainShell() {
   const tabProps = {
     feed: { id, onOpenProfile: setInspectingProfileId, onRewardPoints: earnPoints },
     friends: { id, onOpenProfile: setInspectingProfileId },
-    community: { id, onOpenProfile: setInspectingProfileId },
+    
+    // ✅ CORRECTION ICI : Passage explicite des props nécessaires pour CommunityTab / ContactsTab
+    community: { 
+      id, 
+      userId: id, 
+      onOpenProfile: setInspectingProfileId 
+    },
+
     companies: { id, onOpenProfile: setInspectingProfileId },
     discover: {
       userId: id,
@@ -161,7 +168,6 @@ export function MainShell() {
           currentId={id}
           onClose={() => setInspectingProfileId(null)}
           onNavigateToMessages={() => setActiveTab("messages")}
-          // ✅ Redirige proprement vers l'onglet Paramètres au lieu d'ouvrir une modale inexistante
           onOpenSettings={() => {
             setInspectingProfileId(null);
             setActiveTab("settings");
@@ -180,11 +186,8 @@ export function MainShell() {
         onClose={() => setSearchModalOpen(false)} 
         onSelectUser={(profileId) => setInspectingProfileId(profileId)} 
         onSelectTab={(tabId) => setActiveTab(tabId)}
-        // ✅ Permet à la recherche globale d'ouvrir une boutique spécifique
-        onSelectShop={(shopId) => {
+        onSelectShop={() => {
           setActiveTab("shop");
-          // Note : Si ton composant Shop a besoin de l'ID de la boutique pour l'ouvrir directement,
-          // tu peux le stocker dans un état global ou le passer via un contexte ici.
         }}
       />
     </div>
