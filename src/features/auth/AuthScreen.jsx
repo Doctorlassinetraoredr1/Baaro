@@ -3,7 +3,12 @@ import {
   Coins,
   Radio,
   Shield,
-  Sparkles,
+  Phone,
+  Mail,
+  Send,
+  ArrowLeft,
+  UserCheck,
+  CheckCircle2,
 } from "lucide-react";
 import { supabase } from "../../supabaseClient.js";
 import { TurnstileWidget } from "../../Turnstile.jsx";
@@ -12,9 +17,10 @@ import {
   captureRefFromUrl,
   getPendingRef,
 } from "../../lib/referralApi.js";
+import PhoneAuth from "../../components/PhoneAuth.jsx";
 
 export default function AuthScreen() {
-  const [mode, setMode] = useState("anonymous");
+  const [mode, setMode] = useState("choice"); // "choice", "guest", "email", "phone"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLogin, setIsLogin] = useState(true);
@@ -35,17 +41,12 @@ export default function AuthScreen() {
 
   /**
    * Connexion anonyme / invité.
-   *
-   * La validation du CAPTCHA ne déclenche PAS
-   * automatiquement cette fonction.
    */
   const handleAnonymous = async () => {
     if (loading) return;
 
     if (!captchaToken) {
-      setError(
-        "Veuillez d'abord valider la vérification de sécurité."
-      );
+      setError("Veuillez valider le test de sécurité ci-dessous.");
       return;
     }
 
@@ -54,28 +55,21 @@ export default function AuthScreen() {
     setSuccess(null);
 
     try {
-      // Autorise la session anonyme UNIQUEMENT pour ce clic (flag d'onglet)
       try {
         sessionStorage.setItem("baaro_guest_ok", "1");
       } catch {}
 
-      const useCaptcha =
-        captchaToken &&
-        captchaToken !== "dev-bypass";
+      const useCaptcha = captchaToken && captchaToken !== "dev-bypass";
 
-      const {
-        data,
-        error: authError,
-      } =
-        await supabase.auth.signInAnonymously(
-          useCaptcha
-            ? {
-                options: {
-                  captchaToken,
-                },
-              }
-            : undefined
-        );
+      const { data, error: authError } = await supabase.auth.signInAnonymously(
+        useCaptcha
+          ? {
+              options: {
+                captchaToken,
+              },
+            }
+          : undefined
+      );
 
       if (authError) {
         try {
@@ -88,21 +82,18 @@ export default function AuthScreen() {
         try {
           sessionStorage.removeItem("baaro_guest_ok");
         } catch {}
-        throw new Error("Session non créée.");
+        throw new Error("Impossible d'initialiser la session.");
       }
 
-      setSuccess(
-        "Connexion réussie. Bienvenue sur BAARO !"
-      );
-    } catch (err) {
-      console.error(
-        "Erreur connexion anonyme :",
-        err
-      );
+      // Identifiant unique universel du projet : id
+      const id = data?.user?.id;
 
+      setSuccess("Connexion réussie ! Bienvenue sur BAARO.");
+    } catch (err) {
+      console.error("Erreur connexion anonyme :", err);
       setError(
         err?.message ||
-          "Impossible de se connecter en mode invité. Vérifiez que l'authentification anonyme est activée dans Supabase."
+          "Accès invité indisponible. Vérifiez la configuration Supabase."
       );
     } finally {
       setLoading(false);
@@ -110,7 +101,7 @@ export default function AuthScreen() {
   };
 
   /**
-   * Connexion / inscription avec email.
+   * Connexion / Inscription par Email.
    */
   const handleEmailSubmit = async (event) => {
     event.preventDefault();
@@ -123,7 +114,7 @@ export default function AuthScreen() {
     setSuccess(null);
 
     if (!cleanEmail) {
-      setError("Veuillez saisir votre email.");
+      setError("Veuillez indiquer une adresse email valide.");
       return;
     }
 
@@ -136,92 +127,46 @@ export default function AuthScreen() {
 
     try {
       if (isLogin) {
-        const {
-          error: authError,
-        } =
-          await supabase.auth.signInWithPassword({
-            email: cleanEmail,
-            password,
-          });
+        const { error: authError } = await supabase.auth.signInWithPassword({
+          email: cleanEmail,
+          password,
+        });
 
-        if (authError) {
-          throw authError;
-        }
+        if (authError) throw authError;
 
-        setSuccess(
-          "Connexion réussie. Bienvenue sur BAARO !"
-        );
-
+        setSuccess("Ravi de vous revoir ! Connexion réussie.");
         return;
       }
 
-      /*
-       * INSCRIPTION
-       */
-      const username = cleanEmail
-        .split("@")[0]
-        .replace(/[^a-zA-Z0-9_.-]/g, "")
-        .slice(0, 20);
-
-      const safeUsername =
-        username || "baaro_user";
-
-      const {
-        data,
-        error: authError,
-      } = await supabase.auth.signUp({
+      /* INSCRIPTION : Authentification utilisant uniquement la clé unique `id` */
+      const { data, error: authError } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
-        options: {
-          data: {
-            display_name: safeUsername,
-            handle: `@${safeUsername}`,
-          },
-        },
       });
 
-      if (authError) {
-        throw authError;
-      }
+      if (authError) throw authError;
 
-      /*
-       * Cas 1 :
-       * Supabase a créé directement une session.
-       */
+      // Récupération directe de l'identifiant unique : id
+      const id = data?.user?.id;
+
       if (data?.session) {
-        setSuccess(
-          "Compte créé avec succès. Bienvenue sur BAARO !"
-        );
-
+        setSuccess("Votre compte a été créé avec succès !");
         return;
       }
 
-      /*
-       * Cas 2 :
-       * Confirmation email obligatoire.
-       *
-       * Ce n'est PAS une erreur.
-       */
       setSuccess(
-        "Compte créé avec succès. Un email de confirmation vient de vous être envoyé. Vérifiez votre boîte de réception et vos spams avant de vous connecter."
+        "Un email de vérification vous a été envoyé. Veuillez consulter votre boîte de réception pour valider votre compte."
       );
     } catch (err) {
-      console.error(
-        "Erreur authentification :",
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Erreur d'authentification."
-      );
+      console.error("Erreur authentification email :", err);
+      setError(err?.message || "Une erreur s'est produite lors de l'authentification.");
     } finally {
       setLoading(false);
     }
   };
 
   /**
-   * Connexion OAuth.
+   * Connexion via fournisseurs réseaux sociaux (OAuth).
    */
   const handleOAuth = async (provider) => {
     if (loading || oauthLoading) return;
@@ -231,220 +176,190 @@ export default function AuthScreen() {
     setSuccess(null);
 
     try {
-      const {
-        error: authError,
-      } =
-        await supabase.auth.signInWithOAuth({
-          provider,
-          options: {
-            redirectTo: window.location.origin,
-          },
-        });
+      const { error: authError } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: window.location.origin,
+        },
+      });
 
-      if (authError) {
-        throw authError;
-      }
+      if (authError) throw authError;
     } catch (err) {
-      console.error(
-        `Erreur OAuth ${provider} :`,
-        err
-      );
-
-      setError(
-        err?.message ||
-          "Erreur de connexion."
-      );
-
+      console.error(`Erreur OAuth ${provider} :`, err);
+      setError(err?.message || "Erreur lors de la connexion externe.");
       setOauthLoading(null);
     }
   };
 
-  /**
-   * Ouvrir le formulaire email.
-   */
-  const openEmailMode = () => {
-    setMode("email");
+  const switchMode = (newMode) => {
+    setMode(newMode);
     setError(null);
     setSuccess(null);
   };
 
-  /**
-   * Retour au mode principal.
-   */
-  const openAnonymousMode = () => {
-    setMode("anonymous");
-    setError(null);
-    setSuccess(null);
-  };
-
-  /**
-   * Basculer connexion / inscription.
-   */
   const toggleAuthMode = () => {
-    setIsLogin((value) => !value);
+    setIsLogin((prev) => !prev);
     setError(null);
     setSuccess(null);
     setPassword("");
   };
 
   return (
-    <div
-      className="min-h-screen flex items-center justify-center p-4"
-      style={{
-        background: "#0B1220",
-      }}
-    >
-      <div
-        className="w-full max-w-md rounded-3xl p-8 border shadow-2xl"
-        style={{
-          background:
-            "rgba(15, 23, 42, 0.95)",
-          borderColor:
-            COLORS.borderGold ||
-            "#D9AE52",
-        }}
-      >
-        {/* Logo / présentation */}
-        <div className="text-center mb-6">
-          <div
-            className="w-14 h-14 mx-auto mb-3 rounded-2xl flex items-center justify-center font-bold text-2xl shadow-lg"
-            style={{
-              background:
-                "linear-gradient(135deg, #D9AE52 0%, #2DBFA6 100%)",
-              color:
-                COLORS.bg || "#0B1220",
-            }}
-          >
+    <div className="min-h-screen flex items-center justify-center p-4 bg-slate-950 text-slate-100 font-sans selection:bg-amber-500 selection:text-slate-950">
+      <div className="w-full max-w-md rounded-3xl p-8 border border-amber-500/30 bg-slate-900/90 backdrop-blur-xl shadow-2xl transition-all">
+        {/* En-tête / Branding */}
+        <div className="text-center mb-8">
+          <div className="w-16 h-16 mx-auto mb-4 rounded-2xl flex items-center justify-center font-extrabold text-3xl shadow-lg bg-gradient-to-tr from-amber-500 to-teal-400 text-slate-950 tracking-wider">
             B
           </div>
 
-          <h1
-            className="text-2xl font-bold"
-            style={{
-              color:
-                COLORS.gold ||
-                "#D9AE52",
-            }}
-          >
+          <h1 className="text-3xl font-black tracking-tight text-amber-400">
             BAARO
           </h1>
 
-          <p
-            className="text-base font-semibold mt-2"
-            style={{
-              color:
-                COLORS.ivory ||
-                "#f1f5f9",
-            }}
-          >
+          <p className="text-base font-semibold text-slate-200 mt-1">
             Gagne. Échange. Convertis.
           </p>
 
-          <p
-            className="text-sm mt-2 leading-relaxed"
-            style={{
-              color:
-                COLORS.muted ||
-                "#94a3b8",
-            }}
-          >
-            Découvre BAARO, participe,
-            échange et gagne des points.
+          <p className="text-xs text-slate-400 mt-1">
+            La plateforme d'échange interactive et sécurisée.
           </p>
         </div>
 
-        {/* Fonctionnalités */}
+        {/* Arguments clés */}
         <div className="grid grid-cols-3 gap-2 mb-6">
           {[
-            {
-              icon: Coins,
-              label: "Points → valeur",
-              color: COLORS.gold,
-            },
-            {
-              icon: Radio,
-              label: "Lives + IA",
-              color: COLORS.purple,
-            },
-            {
-              icon: Shield,
-              label: "Chat sécurisé",
-              color: COLORS.teal,
-            },
-          ].map(
-            ({
-              icon: Icon,
-              label,
-              color,
-            }) => (
-              <div
-                key={label}
-                className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl border text-center"
-                style={{
-                  background:
-                    "rgba(255,255,255,0.03)",
-                  borderColor:
-                    "rgba(255,255,255,0.08)",
-                }}
-              >
-                <Icon
-                  size={18}
-                  style={{ color }}
-                />
-
-                <span
-                  className="text-[10px] font-medium"
-                  style={{
-                    color:
-                      COLORS.muted,
-                  }}
-                >
-                  {label}
-                </span>
-              </div>
-            )
-          )}
+            { icon: Coins, label: "Points & Gains", color: "text-amber-400" },
+            { icon: Radio, label: "Lives & IA", color: "text-purple-400" },
+            { icon: Shield, label: "Sécurisé", color: "text-teal-400" },
+          ].map(({ icon: Icon, label, color }) => (
+            <div
+              key={label}
+              className="flex flex-col items-center gap-1.5 p-3 rounded-2xl border border-slate-800 bg-slate-950/40 text-center"
+            >
+              <Icon size={20} className={color} />
+              <span className="text-[11px] font-medium text-slate-400">
+                {label}
+              </span>
+            </div>
+          ))}
         </div>
 
-        {/* Parrainage */}
+        {/* Code de Parrainage */}
         {pendingRef && (
-          <div
-            className="mb-5 p-3 rounded-xl text-xs text-center border"
-            style={{
-              background:
-                "rgba(45,191,166,0.1)",
-              borderColor:
-                COLORS.borderTeal,
-              color:
-                COLORS.teal,
-            }}
-          >
-            Code parrain détecté :
-            <strong className="font-mono">
-              {" "}
-              {pendingRef}
-            </strong>
+          <div className="mb-6 p-3 rounded-xl text-xs text-center border border-teal-500/30 bg-teal-500/10 text-teal-300 flex items-center justify-center gap-2">
+            <CheckCircle2 size={16} />
+            <span>
+              Code parrain appliqué : <strong className="font-mono text-teal-200">{pendingRef}</strong>
+            </span>
           </div>
         )}
 
         {/* =====================================================
-            MODE PRINCIPAL
+            VUE 1 : CHOIX PRINCIPAL DES MÉTHODES
         ====================================================== */}
-        {mode === "anonymous" && (
-          <div className="flex flex-col gap-5">
-            <p
-              className="text-sm text-center font-medium"
-              style={{
-                color:
-                  COLORS.ivory ||
-                  "#f1f5f9",
-              }}
-            >
-              Entre gratuitement
+        {mode === "choice" && (
+          <div className="flex flex-col gap-3">
+            <p className="text-xs text-center uppercase tracking-wider font-semibold text-slate-400 mb-2">
+              Choisissez votre mode d'accès
             </p>
 
-            {/* CAPTCHA */}
-            <div className="flex justify-center">
+            {/* Téléphone */}
+            <button
+              type="button"
+              onClick={() => switchMode("phone")}
+              className="w-full py-3.5 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-3 bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg transition-all active:scale-[0.98]"
+            >
+              <Phone size={18} />
+              <span>Continuer avec Téléphone</span>
+            </button>
+
+            {/* Email */}
+            <button
+              type="button"
+              onClick={() => switchMode("email")}
+              className="w-full py-3.5 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-3 bg-blue-600 hover:bg-blue-500 text-white shadow-lg transition-all active:scale-[0.98]"
+            >
+              <Mail size={18} />
+              <span>Continuer avec Email</span>
+            </button>
+
+            {/* Facebook */}
+            <button
+              type="button"
+              onClick={() => handleOAuth("facebook")}
+              disabled={!!oauthLoading}
+              className="w-full py-3.5 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-3 bg-[#1877F2] hover:bg-[#166fe5] text-white shadow-lg transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              <span className="font-bold text-lg leading-none">f</span>
+              <span>
+                {oauthLoading === "facebook" ? "Connexion..." : "Continuer avec Facebook"}
+              </span>
+            </button>
+
+            {/* Telegram */}
+            <button
+              type="button"
+              onClick={() => handleOAuth("telegram")}
+              disabled={!!oauthLoading}
+              className="w-full py-3.5 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-3 bg-[#229ED9] hover:bg-[#1f92c9] text-white shadow-lg transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              <Send size={18} />
+              <span>
+                {oauthLoading === "telegram" ? "Connexion..." : "Continuer avec Telegram"}
+              </span>
+            </button>
+
+            {/* X / Twitter */}
+            <button
+              type="button"
+              onClick={() => handleOAuth("twitter")}
+              disabled={!!oauthLoading}
+              className="w-full py-3.5 px-4 rounded-xl font-semibold text-sm flex items-center justify-center gap-3 bg-slate-950 hover:bg-black text-white border border-slate-800 shadow-lg transition-all active:scale-[0.98] disabled:opacity-50"
+            >
+              <span className="font-bold text-base">X</span>
+              <span>
+                {oauthLoading === "twitter" ? "Connexion..." : "Continuer avec X"}
+              </span>
+            </button>
+
+            {/* Séparateur */}
+            <div className="flex items-center gap-3 my-3">
+              <div className="flex-1 h-px bg-slate-800" />
+              <span className="text-xs text-slate-500 uppercase tracking-widest font-semibold">
+                ou
+              </span>
+              <div className="flex-1 h-px bg-slate-800" />
+            </div>
+
+            {/* Bouton Accès Invité autonome */}
+            <button
+              type="button"
+              onClick={() => switchMode("guest")}
+              className="w-full py-3.5 px-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 border border-amber-500/40 text-amber-400 hover:bg-amber-500/10 transition-all active:scale-[0.98]"
+            >
+              <UserCheck size={18} />
+              <span>Accès Invité (Découverte)</span>
+            </button>
+          </div>
+        )}
+
+        {/* =====================================================
+            VUE 2 : MODE INVITÉ
+        ====================================================== */}
+        {mode === "guest" && (
+          <div className="flex flex-col gap-4">
+            <div className="text-center">
+              <h2 className="text-lg font-bold text-slate-100">
+                Accès Invité
+              </h2>
+              <p className="text-xs text-slate-400 mt-1">
+                Validez le contrôle de sécurité ci-dessous pour continuer.
+              </p>
+            </div>
+
+            {/* CAPTCHA Widget */}
+            <div className="flex justify-center my-2">
               <TurnstileWidget
                 onVerify={(token) => {
                   setCaptchaToken(token || null);
@@ -454,232 +369,103 @@ export default function AuthScreen() {
               />
             </div>
 
-            {/* Message succès */}
+            {/* Notifications */}
             {success && (
-              <div className="text-center text-sm text-emerald-400 bg-emerald-500/10 rounded-xl p-3">
+              <div className="text-center text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
                 {success}
               </div>
             )}
-
-            {/* Bouton invité */}
-            <button
-              type="button"
-              onClick={handleAnonymous}
-              disabled={
-                loading ||
-                !captchaToken
-              }
-              className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
-              style={{
-                background:
-                  "linear-gradient(135deg, #D9AE52 0%, #2DBFA6 100%)",
-                color: "#0B1220",
-              }}
-            >
-              {loading
-                ? "Connexion..."
-                : "Continuer en tant qu'invité"}
-            </button>
-
-            {/* Erreur */}
             {error && (
-              <div className="text-center text-sm text-rose-400 bg-rose-500/10 rounded-xl p-3">
+              <div className="text-center text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3">
                 {error}
               </div>
             )}
 
-            <div className="flex items-center gap-3">
-              <div
-                className="flex-1 h-px"
-                style={{
-                  background:
-                    COLORS.border ||
-                    "#334155",
-                }}
-              />
-
-              <span
-                className="text-xs"
-                style={{
-                  color:
-                    COLORS.muted,
-                }}
-              >
-                ou
-              </span>
-
-              <div
-                className="flex-1 h-px"
-                style={{
-                  background:
-                    COLORS.border ||
-                    "#334155",
-                }}
-              />
-            </div>
-
-            {/* Facebook */}
             <button
               type="button"
-              onClick={() =>
-                handleOAuth("facebook")
-              }
-              disabled={!!oauthLoading}
-              className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
-              style={{
-                background: "#1877F2",
-                color: "#fff",
-              }}
+              onClick={handleAnonymous}
+              disabled={loading || !captchaToken}
+              className="w-full py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-teal-400 text-slate-950 shadow-lg disabled:opacity-50 hover:opacity-95 transition-all active:scale-[0.98]"
             >
-              {oauthLoading === "facebook"
-                ? "Connexion..."
-                : "Continuer avec Facebook"}
+              {loading ? "Connexion en cours..." : "Entrer en tant qu'invité"}
             </button>
 
-            {/* X */}
             <button
               type="button"
-              onClick={() =>
-                handleOAuth("twitter")
-              }
-              disabled={!!oauthLoading}
-              className="w-full py-3 rounded-xl font-semibold text-sm disabled:opacity-50"
-              style={{
-                background: "#000000",
-                color: "#fff",
-                border:
-                  "1px solid #334155",
-              }}
+              onClick={() => switchMode("choice")}
+              className="text-xs text-slate-400 hover:text-slate-200 text-center flex items-center justify-center gap-1 mt-2 transition-colors"
             >
-              {oauthLoading === "twitter"
-                ? "Connexion..."
-                : "Continuer avec X"}
+              <ArrowLeft size={14} />
+              <span>Retour aux choix de connexion</span>
             </button>
-
-            {/* Email */}
-            <button
-              type="button"
-              onClick={openEmailMode}
-              className="text-sm text-center underline"
-              style={{
-                color:
-                  COLORS.teal ||
-                  "#2DBFA6",
-              }}
-            >
-              Se connecter ou créer
-              un compte avec email
-            </button>
-
-            <p
-              className="text-[10px] text-center"
-              style={{
-                color:
-                  COLORS.muted,
-              }}
-            >
-              Tu peux également
-              découvrir BAARO en mode
-              invité.
-            </p>
           </div>
         )}
 
         {/* =====================================================
-            MODE EMAIL
+            VUE 3 : MODE TÉLÉPHONE
+        ====================================================== */}
+        {mode === "phone" && (
+          <div className="flex flex-col gap-4">
+            <PhoneAuth />
+
+            <button
+              type="button"
+              onClick={() => switchMode("choice")}
+              className="text-xs text-slate-400 hover:text-slate-200 text-center flex items-center justify-center gap-1 mt-2 transition-colors"
+            >
+              <ArrowLeft size={14} />
+              <span>Retour aux choix de connexion</span>
+            </button>
+          </div>
+        )}
+
+        {/* =====================================================
+            VUE 4 : MODE EMAIL
         ====================================================== */}
         {mode === "email" && (
-          <form
-            onSubmit={handleEmailSubmit}
-            className="flex flex-col gap-4"
-          >
-            <div className="text-center mb-1">
-              <h2
-                className="text-lg font-bold"
-                style={{
-                  color:
-                    COLORS.ivory ||
-                    "#f1f5f9",
-                }}
-              >
-                {isLogin
-                  ? "Connexion"
-                  : "Créer un compte"}
+          <form onSubmit={handleEmailSubmit} className="flex flex-col gap-4">
+            <div className="text-center">
+              <h2 className="text-lg font-bold text-slate-100">
+                {isLogin ? "Connexion" : "Créer un compte"}
               </h2>
-
-              <p
-                className="text-xs mt-1"
-                style={{
-                  color:
-                    COLORS.muted ||
-                    "#94a3b8",
-                }}
-              >
+              <p className="text-xs text-slate-400 mt-1">
                 {isLogin
-                  ? "Connecte-toi à ton compte BAARO."
-                  : "Crée ton compte BAARO gratuitement."}
+                  ? "Entrez vos identifiants pour accéder à votre espace."
+                  : "Remplissez les informations ci-dessous pour vous inscrire."}
               </p>
             </div>
 
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(event) =>
-                setEmail(
-                  event.target.value
-                )
-              }
-              required
-              autoComplete="email"
-              className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm"
-              style={{
-                borderColor:
-                  COLORS.border ||
-                  "#334155",
-                color:
-                  COLORS.ivory ||
-                  "#f1f5f9",
-              }}
-            />
+            <div className="flex flex-col gap-3">
+              <input
+                type="email"
+                placeholder="Adresse email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                autoComplete="email"
+                className="w-full px-4 py-3 rounded-xl border border-slate-800 bg-slate-950/60 text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500/50 transition-colors text-sm"
+              />
 
-            <input
-              type="password"
-              placeholder="Mot de passe"
-              value={password}
-              onChange={(event) =>
-                setPassword(
-                  event.target.value
-                )
-              }
-              required
-              minLength={6}
-              autoComplete={
-                isLogin
-                  ? "current-password"
-                  : "new-password"
-              }
-              className="w-full px-4 py-3 rounded-xl border bg-transparent outline-none text-sm"
-              style={{
-                borderColor:
-                  COLORS.border ||
-                  "#334155",
-                color:
-                  COLORS.ivory ||
-                  "#f1f5f9",
-              }}
-            />
+              <input
+                type="password"
+                placeholder="Mot de passe"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                required
+                minLength={6}
+                autoComplete={isLogin ? "current-password" : "new-password"}
+                className="w-full px-4 py-3 rounded-xl border border-slate-800 bg-slate-950/60 text-slate-100 placeholder-slate-500 outline-none focus:border-amber-500/50 transition-colors text-sm"
+              />
+            </div>
 
-            {/* Succès / confirmation email */}
+            {/* Notifications */}
             {success && (
-              <div className="text-center text-sm text-emerald-400 bg-emerald-500/10 rounded-xl p-3">
+              <div className="text-center text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-3">
                 {success}
               </div>
             )}
-
-            {/* Erreur */}
             {error && (
-              <div className="text-center text-sm text-rose-400 bg-rose-500/10 rounded-xl p-3">
+              <div className="text-center text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-xl p-3">
                 {error}
               </div>
             )}
@@ -687,43 +473,31 @@ export default function AuthScreen() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3 rounded-xl font-bold text-sm disabled:opacity-50"
-              style={{
-                background:
-                  "linear-gradient(135deg, #D9AE52 0%, #2DBFA6 100%)",
-                color: "#0B1220",
-              }}
+              className="w-full py-3.5 rounded-xl font-bold text-sm bg-gradient-to-r from-amber-500 to-teal-400 text-slate-950 shadow-lg disabled:opacity-50 hover:opacity-95 transition-all active:scale-[0.98]"
             >
               {loading
-                ? "Chargement..."
+                ? "Traitement..."
                 : isLogin
-                  ? "Se connecter"
-                  : "Créer un compte"}
+                ? "Se connecter"
+                : "S'inscrire"}
             </button>
 
-            <div
-              className="flex justify-between text-xs"
-              style={{
-                color:
-                  COLORS.muted,
-              }}
-            >
+            <div className="flex items-center justify-between text-xs text-slate-400 mt-1">
               <button
                 type="button"
                 onClick={toggleAuthMode}
-                className="underline"
+                className="hover:text-amber-400 transition-colors underline"
               >
-                {isLogin
-                  ? "Créer un compte"
-                  : "Déjà un compte ?"}
+                {isLogin ? "Créer un compte" : "Déjà inscrit ?"}
               </button>
 
               <button
                 type="button"
-                onClick={openAnonymousMode}
-                className="underline"
+                onClick={() => switchMode("choice")}
+                className="hover:text-slate-200 transition-colors flex items-center gap-1"
               >
-                Retour
+                <ArrowLeft size={12} />
+                <span>Retour</span>
               </button>
             </div>
           </form>
