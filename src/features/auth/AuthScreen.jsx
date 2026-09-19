@@ -17,7 +17,7 @@ import {
   captureRefFromUrl,
   getPendingRef,
 } from "../../lib/referralApi.js";
-import PhoneAuth from "../../components/PhoneAuth.jsx";
+import PhoneAuth from "./PhoneAuth.jsx"; // ✅ Importation corrigée (même dossier)
 
 export default function AuthScreen() {
   const [mode, setMode] = useState("choice"); // "choice", "guest", "email", "phone"
